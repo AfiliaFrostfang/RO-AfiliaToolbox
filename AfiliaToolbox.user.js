@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.5.3
+// @version      1.6.0
 // @description  Categorizes Rescue Operator AAOs and adds categorized AAO selection to the vehicle dispatch window.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
@@ -20,7 +20,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.5.3';
+    const SCRIPT_VERSION = '1.6.0';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -29,6 +29,13 @@
     const SETTINGS_PANEL_ID = 'afilia-aao-category-panel';
     const DISPATCH_PANEL_ID = 'afilia-aao-dispatch-panel';
     const UPDATE_NOTICE_ID = 'afilia-aao-update-notice';
+    const NOTEPAD_BUTTON_CLASS = 'afilia-notepad-button';
+    const NOTEPAD_PANEL_ID = 'afilia-notepad-panel';
+    const NOTEPAD_TEXTAREA_CLASS = 'afilia-notepad-textarea';
+    const NOTEPAD_STORE_KEY = 'notepad';
+    const NOTEPAD_SAVE_DELAY = 400;
+    const CHANGELOG_STORE_KEY = 'lastSeenVersion';
+    const CHANGELOG_POPUP_ID = 'afilia-changelog-popup';
 
     const DEFAULT_CATEGORIES = [
         {
@@ -47,6 +54,13 @@
             collapsed: false
         }
     ];
+
+    const CHANGELOG = {
+        '1.6.0': [
+            'Neuer Notizblock in der rechten Leiste – Notizen werden automatisch lokal gespeichert.',
+            'Nach einem Update erscheint dieses Popup mit den Neuerungen der neuen Version.'
+        ]
+    };
 
     /* =========================================================
        Runtime state
@@ -69,6 +83,10 @@
 
     let dispatchSearchValue = '';
     let draggedCategoryID = null;
+
+    let notepadText = '';
+    let notepadSaveTimer = null;
+    let lastNotepadContainer = null;
 
     /* =========================================================
        IndexedDB
@@ -299,6 +317,167 @@
         }
     }
 
+    /* =========================================================
+       Changelog
+       ========================================================= */
+
+    async function showChangelogPopup() {
+        const lastSeenVersion =
+            (await dbGet(
+                CHANGELOG_STORE_KEY
+            )) || '';
+
+        if (
+            compareVersions(
+                SCRIPT_VERSION,
+                lastSeenVersion
+            ) <= 0
+        ) {
+            return;
+        }
+
+        const entries = Object.keys(
+            CHANGELOG
+        )
+            .filter(version => {
+                return (
+                    compareVersions(
+                        version,
+                        lastSeenVersion
+                    ) > 0 &&
+                    Array.isArray(
+                        CHANGELOG[version]
+                    )
+                );
+            })
+            .sort((left, right) => {
+                return compareVersions(
+                    right,
+                    left
+                );
+            })
+            .map(version => ({
+                version,
+                notes: CHANGELOG[version]
+            }));
+
+        if (entries.length === 0) {
+            return;
+        }
+
+        renderChangelogPopup(entries);
+
+        await dbSet(
+            CHANGELOG_STORE_KEY,
+            SCRIPT_VERSION
+        );
+    }
+
+    function renderChangelogPopup(entries) {
+        if (
+            document.getElementById(
+                CHANGELOG_POPUP_ID
+            )
+        ) {
+            return;
+        }
+
+        const overlay =
+            document.createElement('div');
+
+        overlay.id = CHANGELOG_POPUP_ID;
+        overlay.className =
+            'afilia-changelog-overlay';
+
+        overlay.innerHTML = `
+            <div class="afilia-changelog-popup">
+                <div class="afilia-changelog-popup-header">
+                    <div class="afilia-changelog-popup-title">
+                        Update installiert – Was ist neu?
+                    </div>
+
+                    <button
+                        type="button"
+                        class="afilia-changelog-popup-close"
+                        title="Schließen"
+                    >
+                        ×
+                    </button>
+                </div>
+
+                <div class="afilia-changelog-popup-body">
+                    ${entries.map(entry => `
+                        <div class="afilia-changelog-version">
+                            <div class="afilia-changelog-version-title">
+                                Version ${escapeHTML(entry.version)}
+                            </div>
+
+                            <ul class="afilia-changelog-list">
+                                ${entry.notes.map(note => `
+                                    <li>${escapeHTML(note)}</li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        let keydownHandler = null;
+
+        const close = () => {
+            overlay.remove();
+
+            if (keydownHandler) {
+                document.removeEventListener(
+                    'keydown',
+                    keydownHandler
+                );
+            }
+        };
+
+        overlay
+            .querySelector(
+                '.afilia-changelog-popup-close'
+            )
+            .addEventListener(
+                'click',
+                event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    close();
+                }
+            );
+
+        overlay.addEventListener(
+            'click',
+            event => {
+                if (
+                    event.target ===
+                    overlay
+                ) {
+                    close();
+                }
+            }
+        );
+
+        keydownHandler = event => {
+            if (
+                event.key === 'Escape'
+            ) {
+                close();
+            }
+        };
+
+        document.addEventListener(
+            'keydown',
+            keydownHandler
+        );
+
+        document.body.appendChild(overlay);
+    }
+
     function findCategory(categoryID) {
         return categories.find(
             category => category.id === categoryID
@@ -373,6 +552,8 @@
         }
 
         assignments = await dbGet('assignments') || {};
+
+        notepadText = (await dbGet(NOTEPAD_STORE_KEY)) || '';
     }
 
     async function saveCategories() {
@@ -2054,6 +2235,279 @@
     }
 
     /* =========================================================
+       Notepad
+       ========================================================= */
+
+    function findNotepadContainer() {
+        const icon = document.querySelector(
+            'i.fa-light-emergency-on'
+        );
+
+        if (!icon) {
+            return null;
+        }
+
+        return icon.closest(
+            'div.absolute.flex.flex-col'
+        ) || null;
+    }
+
+    function createNotepadButton() {
+        const button =
+            document.createElement('button');
+
+        button.type = 'button';
+
+        button.className =
+            `${NOTEPAD_BUTTON_CLASS} w-10 h-10 sm:w-10 sm:h-10 bg-dark rounded-lg shadow-lg border border-gray-800/80 hover:border-gray-700 transition-all duration-300 flex items-center justify-center cursor-pointer`;
+
+        button.setAttribute(
+            'aria-pressed',
+            'false'
+        );
+
+        button.title =
+            'Notizblock öffnen/schließen';
+
+        button.innerHTML =
+            '<i class="fa-solid fa-note-sticky text-sm sm:text-sm text-white/80"></i>';
+
+        button.addEventListener(
+            'click',
+            event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                toggleNotepadPanel();
+            }
+        );
+
+        return button;
+    }
+
+    function hookNotepadButton() {
+        const container =
+            findNotepadContainer();
+
+        if (!container) {
+            lastNotepadContainer = null;
+            return;
+        }
+
+        const button =
+            container.querySelector(
+                `.${NOTEPAD_BUTTON_CLASS}`
+            );
+
+        if (
+            container ===
+                lastNotepadContainer &&
+            button
+        ) {
+            return;
+        }
+
+        lastNotepadContainer =
+            container;
+
+        if (button) {
+            button.remove();
+        }
+
+        const newButton =
+            createNotepadButton();
+
+        const spacer = container.querySelector(
+            ':scope > div.h-20'
+        );
+
+        if (spacer) {
+            spacer.after(newButton);
+        } else {
+            container.insertBefore(
+                newButton,
+                container.firstChild
+            );
+        }
+    }
+
+    function openNotepadPanel() {
+        if (
+            document.getElementById(
+                NOTEPAD_PANEL_ID
+            )
+        ) {
+            return;
+        }
+
+        const panel =
+            document.createElement('div');
+
+        panel.id = NOTEPAD_PANEL_ID;
+        panel.className =
+            'afilia-notepad-panel';
+
+        panel.innerHTML = `
+            <div class="afilia-notepad-header">
+                <span class="afilia-notepad-title">
+                    Notizblock
+                </span>
+
+                <button
+                    type="button"
+                    class="afilia-notepad-close"
+                    title="Notizblock schließen"
+                >
+                    ×
+                </button>
+            </div>
+
+            <textarea
+                class="afilia-notepad-textarea"
+                placeholder="Notizen eingeben …"
+                spellcheck="false"
+            ></textarea>
+        `;
+
+        const textarea =
+            panel.querySelector(
+                `.${NOTEPAD_TEXTAREA_CLASS}`
+            );
+
+        textarea.value = notepadText;
+
+        panel
+            .querySelector(
+                '.afilia-notepad-close'
+            )
+            .addEventListener(
+                'click',
+                event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    closeNotepadPanel();
+                }
+            );
+
+        textarea.addEventListener(
+            'input',
+            () => {
+                notepadText =
+                    textarea.value;
+
+                scheduleSaveNotepad();
+            }
+        );
+
+        textarea.addEventListener(
+            'keydown',
+            event => {
+                event.stopPropagation();
+
+                if (
+                    event.key === 'Escape'
+                ) {
+                    event.preventDefault();
+                    closeNotepadPanel();
+                }
+            }
+        );
+
+        document.body.appendChild(panel);
+
+        updateNotepadButtonState();
+
+        textarea.focus();
+    }
+
+    function closeNotepadPanel() {
+        const panel =
+            document.getElementById(
+                NOTEPAD_PANEL_ID
+            );
+
+        if (panel) {
+            panel.remove();
+        }
+
+        if (notepadSaveTimer) {
+            clearTimeout(
+                notepadSaveTimer
+            );
+            notepadSaveTimer = null;
+        }
+
+        saveNotepad();
+
+        updateNotepadButtonState();
+    }
+
+    function toggleNotepadPanel() {
+        const panel =
+            document.getElementById(
+                NOTEPAD_PANEL_ID
+            );
+
+        if (panel) {
+            closeNotepadPanel();
+        } else {
+            openNotepadPanel();
+        }
+    }
+
+    function updateNotepadButtonState() {
+        const isOpen =
+            !!document.getElementById(
+                NOTEPAD_PANEL_ID
+            );
+
+        document
+            .querySelectorAll(
+                `.${NOTEPAD_BUTTON_CLASS}`
+            )
+            .forEach(button => {
+                button.setAttribute(
+                    'aria-pressed',
+                    isOpen
+                        ? 'true'
+                        : 'false'
+                );
+            });
+    }
+
+    function scheduleSaveNotepad() {
+        if (notepadSaveTimer) {
+            clearTimeout(
+                notepadSaveTimer
+            );
+        }
+
+        notepadSaveTimer = setTimeout(
+            () => {
+                notepadSaveTimer = null;
+
+                saveNotepad();
+            },
+            NOTEPAD_SAVE_DELAY
+        );
+    }
+
+    async function saveNotepad() {
+        try {
+            await dbSet(
+                NOTEPAD_STORE_KEY,
+                notepadText
+            );
+        } catch (error) {
+            console.warn(
+                '[Afilia Toolbox] Notepad save failed:',
+                error
+            );
+        }
+    }
+
+    /* =========================================================
        CSS
        ========================================================= */
 
@@ -2127,6 +2581,93 @@
 
             .afilia-update-notice-close:hover {
                 background: #fee2e2;
+            }
+
+            /* =====================================================
+               Changelog
+               ===================================================== */
+
+            .afilia-changelog-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                background: rgba(17, 24, 39, 0.45);
+            }
+
+            .afilia-changelog-popup {
+                width: min(520px, 100%);
+                max-height: 70vh;
+                display: flex;
+                flex-direction: column;
+                border: 1px solid #e5e7eb;
+                border-radius: 14px;
+                background: #ffffff;
+                box-shadow: 0 20px 50px rgba(17, 24, 39, 0.35);
+                overflow: hidden;
+            }
+
+            .afilia-changelog-popup-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 14px 16px;
+                background: #f9fafb;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .afilia-changelog-popup-title {
+                font-size: 16px;
+                font-weight: 700;
+                color: #111827;
+            }
+
+            .afilia-changelog-popup-close {
+                width: 30px;
+                height: 30px;
+                border: 0;
+                border-radius: 8px;
+                background: transparent;
+                color: #6b7280;
+                cursor: pointer;
+                font-size: 20px;
+                line-height: 1;
+            }
+
+            .afilia-changelog-popup-close:hover {
+                background: #e5e7eb;
+                color: #111827;
+            }
+
+            .afilia-changelog-popup-body {
+                padding: 16px;
+                overflow-y: auto;
+            }
+
+            .afilia-changelog-version + .afilia-changelog-version {
+                margin-top: 16px;
+            }
+
+            .afilia-changelog-version-title {
+                margin-bottom: 6px;
+                font-size: 14px;
+                font-weight: 700;
+                color: #dc2626;
+            }
+
+            .afilia-changelog-list {
+                margin: 0;
+                padding-left: 20px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                color: #374151;
+                font-size: 13px;
+                line-height: 1.5;
             }
 
             /* =====================================================
@@ -2458,6 +2999,76 @@
             }
 
             /* =====================================================
+               Notepad
+               ===================================================== */
+
+            .afilia-notepad-panel {
+                position: fixed;
+                top: 15%;
+                right: 64px;
+                z-index: 99998;
+                width: min(340px, calc(100vw - 88px));
+                max-height: calc(85vh - 15%);
+                display: flex;
+                flex-direction: column;
+                border: 1px solid #3f3f46;
+                border-radius: 12px;
+                background: #18181b;
+                box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+                overflow: hidden;
+            }
+
+            .afilia-notepad-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                padding: 10px 12px;
+                background: #27272a;
+                border-bottom: 1px solid #3f3f46;
+            }
+
+            .afilia-notepad-title {
+                font-size: 14px;
+                font-weight: 700;
+                color: #f4f4f5;
+            }
+
+            .afilia-notepad-close {
+                width: 28px;
+                height: 28px;
+                border: 0;
+                border-radius: 7px;
+                background: transparent;
+                color: #a1a1aa;
+                cursor: pointer;
+                font-size: 18px;
+                line-height: 1;
+            }
+
+            .afilia-notepad-close:hover {
+                background: #3f3f46;
+                color: #f4f4f5;
+            }
+
+            .afilia-notepad-textarea {
+                flex: 1;
+                min-height: 180px;
+                padding: 12px;
+                border: 0;
+                background: transparent;
+                color: #f4f4f5;
+                font-size: 13px;
+                line-height: 1.5;
+                resize: none;
+                outline: none;
+            }
+
+            .afilia-notepad-textarea::placeholder {
+                color: #71717a;
+            }
+
+            /* =====================================================
                Mobile
                ===================================================== */
 
@@ -2487,6 +3098,8 @@
        ========================================================= */
 
     function scan() {
+        hookNotepadButton();
+
         const catalogChanged =
             discoverAAOs();
 
@@ -2654,6 +3267,8 @@
             startObserver();
 
             checkForUpdates();
+
+            showChangelogPopup();
 
             console.info(
                 '[Afilia Toolbox] initialized.'
