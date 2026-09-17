@@ -11,6 +11,7 @@ Es:
 - ermöglicht das individuelle Verschieben und Sortieren der Kategorien per Drag-and-Drop,
 - prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin,
 - synchronisiert die Anzeige automatisch mit Änderungen im Spiel.
+- fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
 
 TLDR: Es erweitert nur die lokale AAO-Verwaltung und Fahrzeug-Alarmierung.
 
@@ -19,6 +20,5 @@ Der Quellcode wird hier immer sichtbar und einsehbar sein und kann jederzeit dur
 
 # Geplante Features
 
-- Notizblock Feature
 - UI Overhaul für diverse Fenster z.b Krankenhausübersicht
 - 'Applet Store' um Toolbox und dessen Funktionen zu personalisieren.
