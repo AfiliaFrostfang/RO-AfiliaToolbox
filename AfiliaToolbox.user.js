@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.6.0
-// @description  Categorizes Rescue Operator AAOs and adds categorized AAO selection to the vehicle dispatch window.
+// @version      1.7.1
+// @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
 // @grant        none
@@ -16,11 +16,11 @@
        Configuration
        ========================================================= */
 
-    const DB_NAME = 'AfiliaAAOCategoriesV2';
+    const DB_NAME = 'AfiliaToolboxDB';
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.6.0';
+    const SCRIPT_VERSION = '1.7.1';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -36,6 +36,23 @@
     const NOTEPAD_SAVE_DELAY = 400;
     const CHANGELOG_STORE_KEY = 'lastSeenVersion';
     const CHANGELOG_POPUP_ID = 'afilia-changelog-popup';
+
+    const VEHICLE_SORT_CLUSTER_ID = 'afilia-vehicle-sort-cluster';
+    const VEHICLE_KM_CLASS = 'afilia-vehicle-km';
+    const VEHICLE_CATALOG_KEY = 'vehicleCatalog';
+    const VEHICLE_DISTANCE_KEY = 'vehicleDistanceCache';
+    const VEHICLE_SORT_PREFS_KEY = 'vehicleSortPrefs';
+    const VEHICLE_STATIONS_URL =
+        '/api/game/stations/getAllStationsWithVehicles';
+    const VEHICLE_DATA_URL =
+        '/api/game/vehicle/getVehicleData';
+    const VEHICLE_STATION_PAGE_SIZE = 50;
+    const VEHICLE_STATION_MAX_PAGES = 20;
+    const VEHICLE_CATALOG_TTL = 5 * 60 * 1000;
+    const VEHICLE_DISTANCE_TTL = 30 * 60 * 1000;
+    const VEHICLE_DISTANCE_CONCURRENCY = 8;
+    const VEHICLE_DISTANCE_BATCH_DELAY = 80;
+    const VEHICLE_SAVE_DELAY = 1200;
 
     const DEFAULT_CATEGORIES = [
         {
@@ -56,6 +73,11 @@
     ];
 
     const CHANGELOG = {
+        '1.7.0': [
+            'Fahrzeugliste: Der gefahrene Kilometerstand wird automatisch für alle Fahrzeuge geladen und neben jedem Fahrzeug angezeigt.',
+            'Neuer Schalter „Nach km sortieren" sortiert die Fahrzeugliste nach gefahrenen Kilometern (absteigend).',
+            'Fahrzeugdaten werden lokal zwischengespeichert, damit nicht bei jedem Öffnen erneut alle Daten geladen werden.'
+        ],
         '1.6.0': [
             'Neuer Notizblock in der rechten Leiste – Notizen werden automatisch lokal gespeichert.',
             'Nach einem Update erscheint dieses Popup mit den Neuerungen der neuen Version.'
@@ -87,6 +109,18 @@
     let notepadText = '';
     let notepadSaveTimer = null;
     let lastNotepadContainer = null;
+
+    let vehicleHooksInstalled = false;
+    let gameSessionID = '';
+    let vehicleCatalog = new Map();
+    let vehicleCatalogByCallsign = new Map();
+    let vehicleDistance = new Map();
+    let vehicleSortActive = false;
+    let vehicleLoadPromise = null;
+    let vehicleSaveTimer = null;
+    let vehicleTabPresent = false;
+    let vehicleStatusLockUntil = 0;
+    const vehicleNativeOrder = new Map();
 
     /* =========================================================
        IndexedDB
@@ -183,6 +217,12 @@
         return `${prefix}_${Date.now()}_${Math.random()
             .toString(36)
             .slice(2, 8)}`;
+    }
+
+    function delay(milliseconds) {
+        return new Promise(resolve => {
+            setTimeout(resolve, milliseconds);
+        });
     }
 
     function compareVersions(left, right) {
@@ -554,6 +594,47 @@
         assignments = await dbGet('assignments') || {};
 
         notepadText = (await dbGet(NOTEPAD_STORE_KEY)) || '';
+
+        const cachedCatalog =
+            await dbGet(VEHICLE_CATALOG_KEY);
+
+        if (
+            cachedCatalog &&
+            Array.isArray(cachedCatalog.entries)
+        ) {
+            buildVehicleCatalogFromEntries(
+                cachedCatalog.entries
+            );
+        }
+
+        const cachedDistance =
+            await dbGet(VEHICLE_DISTANCE_KEY);
+
+        if (
+            cachedDistance &&
+            cachedDistance.entries
+        ) {
+            for (const [id, entry] of Object.entries(
+                cachedDistance.entries
+            )) {
+                if (
+                    entry &&
+                    typeof entry.km === 'number'
+                ) {
+                    vehicleDistance.set(id, {
+                        km: entry.km,
+                        fetchedAt: entry.fetchedAt || 0
+                    });
+                }
+            }
+        }
+
+        const prefs =
+            await dbGet(VEHICLE_SORT_PREFS_KEY);
+
+        if (prefs) {
+            vehicleSortActive = !!prefs.active;
+        }
     }
 
     async function saveCategories() {
@@ -2508,6 +2589,1353 @@
     }
 
     /* =========================================================
+       Vehicle kilometre sort
+       ========================================================= */
+
+    function buildVehicleCatalogFromEntries(entries) {
+        vehicleCatalog = new Map();
+        vehicleCatalogByCallsign = new Map();
+
+        for (const entry of entries) {
+            if (!entry || !entry.id) {
+                continue;
+            }
+
+            vehicleCatalog.set(entry.id, entry);
+
+            if (entry.callsign) {
+                vehicleCatalogByCallsign.set(
+                    getAAOKey(entry.callsign),
+                    entry.id
+                );
+            }
+        }
+    }
+
+    function addVehicleEntries(entries) {
+        for (const entry of entries) {
+            if (!entry || !entry.id) {
+                continue;
+            }
+
+            if (!vehicleCatalog.has(entry.id)) {
+                vehicleCatalog.set(entry.id, entry);
+
+                if (entry.callsign) {
+                    vehicleCatalogByCallsign.set(
+                        getAAOKey(entry.callsign),
+                        entry.id
+                    );
+                }
+            }
+        }
+    }
+
+    function scheduleVehicleSave() {
+        if (vehicleSaveTimer) {
+            clearTimeout(vehicleSaveTimer);
+        }
+
+        vehicleSaveTimer = setTimeout(() => {
+            vehicleSaveTimer = null;
+
+            saveVehicleData().catch(console.error);
+        }, VEHICLE_SAVE_DELAY);
+    }
+
+    async function saveVehicleData() {
+        const catalogEntries =
+            Array.from(vehicleCatalog.values());
+
+        const distanceEntries = {};
+
+        for (const [id, entry] of vehicleDistance) {
+            distanceEntries[id] = {
+                km: entry.km,
+                fetchedAt: entry.fetchedAt
+            };
+        }
+
+        await Promise.all([
+            dbSet(VEHICLE_CATALOG_KEY, {
+                entries: catalogEntries,
+                savedAt: Date.now()
+            }),
+            dbSet(VEHICLE_DISTANCE_KEY, {
+                entries: distanceEntries,
+                savedAt: Date.now()
+            })
+        ]);
+    }
+
+    function trackGameSessionIDFromURL(url) {
+        if (
+            !url ||
+            typeof url !== 'string' ||
+            gameSessionID
+        ) {
+            return;
+        }
+
+        const match =
+            url.match(/[?&]gameSessionId=([^&]+)/);
+
+        if (match) {
+            gameSessionID =
+                decodeURIComponent(match[1]);
+        }
+    }
+
+    function resolveGameSessionID() {
+        if (gameSessionID) {
+            return gameSessionID;
+        }
+
+        const match =
+            location.pathname.match(
+                /\/game\/([^/]+)/
+            );
+
+        if (match) {
+            gameSessionID =
+                decodeURIComponent(match[1]);
+        }
+
+        return gameSessionID;
+    }
+
+    function handleStationListPayload(payload) {
+        const stations = Array.isArray(payload)
+            ? payload
+            : (
+                payload &&
+                Array.isArray(payload.data)
+                    ? payload.data
+                    : null
+            );
+
+        if (!stations) {
+            return;
+        }
+
+        const entries = [];
+
+        for (const station of stations) {
+            for (const vehicle of station?.vehicles || []) {
+                if (!vehicle || !vehicle.id) {
+                    continue;
+                }
+
+                entries.push({
+                    id: vehicle.id,
+                    callsign:
+                        vehicle.callsign ||
+                        vehicle.name ||
+                        '',
+                    name:
+                        vehicle.name || '',
+                    stationName:
+                        station.name || ''
+                });
+            }
+        }
+
+        if (entries.length > 0) {
+            addVehicleEntries(entries);
+            scheduleVehicleSave();
+        }
+    }
+
+    function handleVehicleDataPayload(payload) {
+        const vehicle = payload && (
+            payload.data ||
+            payload.vehicle ||
+            payload
+        );
+
+        if (
+            !vehicle ||
+            !vehicle.id ||
+            typeof vehicle.total_driven_kilometers !==
+                'number'
+        ) {
+            return;
+        }
+
+        vehicleDistance.set(vehicle.id, {
+            km: vehicle.total_driven_kilometers,
+            fetchedAt: Date.now()
+        });
+
+        scheduleVehicleSave();
+    }
+
+    function installVehicleNetworkHooks() {
+        if (vehicleHooksInstalled) {
+            return;
+        }
+
+        vehicleHooksInstalled = true;
+
+        const originalFetch = window.fetch;
+
+        if (typeof originalFetch === 'function') {
+            window.fetch = function (
+                input,
+                init
+            ) {
+                const url =
+                    typeof input === 'string'
+                        ? input
+                        : (
+                            input &&
+                            typeof input.url === 'string'
+                                ? input.url
+                                : ''
+                        );
+
+                trackGameSessionIDFromURL(url);
+
+                const request =
+                    originalFetch.apply(
+                        this,
+                        arguments
+                    );
+
+                if (
+                    url.includes(
+                        VEHICLE_STATIONS_URL
+                    )
+                ) {
+                    request.then(response => {
+                        if (
+                            response &&
+                            response.ok
+                        ) {
+                            response
+                                .clone()
+                                .json()
+                                .then(
+                                    handleStationListPayload
+                                )
+                                .catch(() => {});
+                        }
+                    }).catch(() => {});
+                } else if (
+                    url.includes(
+                        VEHICLE_DATA_URL
+                    )
+                ) {
+                    request.then(response => {
+                        if (
+                            response &&
+                            response.ok
+                        ) {
+                            response
+                                .clone()
+                                .json()
+                                .then(
+                                    handleVehicleDataPayload
+                                )
+                                .catch(() => {});
+                        }
+                    }).catch(() => {});
+                }
+
+                return request;
+            };
+        }
+
+        const originalOpen =
+            XMLHttpRequest.prototype.open;
+
+        XMLHttpRequest.prototype.open =
+            function (method, url) {
+                this._afiliaRequestURL =
+                    String(url || '');
+
+                trackGameSessionIDFromURL(
+                    this._afiliaRequestURL
+                );
+
+                return originalOpen.apply(
+                    this,
+                    arguments
+                );
+            };
+
+        const originalSend =
+            XMLHttpRequest.prototype.send;
+
+        XMLHttpRequest.prototype.send =
+            function () {
+                this.addEventListener(
+                    'load',
+                    () => {
+                        try {
+                            const url =
+                                this._afiliaRequestURL ||
+                                '';
+
+                            if (
+                                !url ||
+                                this.status < 200 ||
+                                this.status >= 300 ||
+                                !this.responseText
+                            ) {
+                                return;
+                            }
+
+                            const payload =
+                                JSON.parse(
+                                    this.responseText
+                                );
+
+                            if (
+                                url.includes(
+                                    VEHICLE_STATIONS_URL
+                                )
+                            ) {
+                                handleStationListPayload(
+                                    payload
+                                );
+                            } else if (
+                                url.includes(
+                                    VEHICLE_DATA_URL
+                                )
+                            ) {
+                                handleVehicleDataPayload(
+                                    payload
+                                );
+                            }
+                        } catch (error) {
+                            /* ignore malformed payloads */
+                        }
+                    }
+                );
+
+                return originalSend.apply(
+                    this,
+                    arguments
+                );
+            };
+    }
+
+    async function ensureVehicleCatalog() {
+        if (!resolveGameSessionID()) {
+            return;
+        }
+
+        if (vehicleCatalog.size === 0) {
+            const cached =
+                await dbGet(VEHICLE_CATALOG_KEY);
+
+            if (
+                cached &&
+                Array.isArray(cached.entries)
+            ) {
+                buildVehicleCatalogFromEntries(
+                    cached.entries
+                );
+            }
+        }
+
+        if (vehicleCatalog.size > 0) {
+            return;
+        }
+
+        const entries = [];
+        let page = 1;
+
+        for (;;) {
+            let stations = [];
+
+            try {
+                const params =
+                    new URLSearchParams({
+                        gameSessionId: gameSessionID,
+                        page: String(page),
+                        per_page: String(
+                            VEHICLE_STATION_PAGE_SIZE
+                        )
+                    });
+
+                const response =
+                    await fetch(
+                        `${VEHICLE_STATIONS_URL}?${params}`,
+                        {
+                            credentials: 'include'
+                        }
+                    );
+
+                if (!response.ok) {
+                    break;
+                }
+
+                const payload =
+                    await response.json();
+
+                stations =
+                    Array.isArray(payload)
+                        ? payload
+                        : (
+                            payload &&
+                            Array.isArray(payload.data)
+                                ? payload.data
+                                : []
+                        );
+            } catch (error) {
+                console.debug(
+                    '[Afilia Toolbox] Vehicle list fetch failed:',
+                    error
+                );
+
+                break;
+            }
+
+            for (const station of stations) {
+                for (const vehicle of station?.vehicles || []) {
+                    if (!vehicle || !vehicle.id) {
+                        continue;
+                    }
+
+                    entries.push({
+                        id: vehicle.id,
+                        callsign:
+                            vehicle.callsign ||
+                            vehicle.name ||
+                            '',
+                        name:
+                            vehicle.name || '',
+                        stationName:
+                            station.name || ''
+                    });
+                }
+            }
+
+            if (
+                stations.length <
+                VEHICLE_STATION_PAGE_SIZE
+            ) {
+                break;
+            }
+
+            if (
+                page >= VEHICLE_STATION_MAX_PAGES
+            ) {
+                break;
+            }
+
+            page += 1;
+        }
+
+        if (entries.length === 0) {
+            return;
+        }
+
+        addVehicleEntries(entries);
+
+        try {
+            await dbSet(VEHICLE_CATALOG_KEY, {
+                entries: Array.from(
+                    vehicleCatalog.values()
+                ),
+                savedAt: Date.now()
+            });
+        } catch (error) {
+            console.debug(
+                '[Afilia Toolbox] Vehicle catalog save failed:',
+                error
+            );
+        }
+    }
+
+    function isVehicleDistanceFresh(id) {
+        const entry =
+            vehicleDistance.get(id);
+
+        return (
+            !!entry &&
+            Date.now() - entry.fetchedAt <
+                VEHICLE_DISTANCE_TTL
+        );
+    }
+
+    async function fetchVehicleDistance(id) {
+        if (!resolveGameSessionID()) {
+            return false;
+        }
+
+        try {
+            const params =
+                new URLSearchParams({
+                    gameSessionId: gameSessionID,
+                    vehicleId: id
+                });
+
+            const response =
+                await fetch(
+                    `${VEHICLE_DATA_URL}?${params}`,
+                    {
+                        credentials: 'include',
+                        headers: {
+                            accept: 'application/json'
+                        }
+                    }
+                );
+
+            if (!response.ok) {
+                return false;
+            }
+
+            const payload =
+                await response.json();
+
+            const vehicle = payload && (
+                payload.data ||
+                payload.vehicle ||
+                payload
+            );
+
+            if (
+                vehicle &&
+                typeof vehicle.total_driven_kilometers ===
+                    'number'
+            ) {
+                vehicleDistance.set(
+                    vehicle.id,
+                    {
+                        km:
+                            vehicle.total_driven_kilometers,
+                        fetchedAt: Date.now()
+                    }
+                );
+
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async function loadVehicleDistances(
+        onProgress
+    ) {
+        if (vehicleLoadPromise) {
+            return vehicleLoadPromise;
+        }
+
+        vehicleLoadPromise = (async () => {
+            try {
+                await ensureVehicleCatalog();
+
+                const ids =
+                    Array.from(
+                        vehicleCatalog.keys()
+                    );
+
+                const missing = ids.filter(id => {
+                    return !isVehicleDistanceFresh(
+                        id
+                    );
+                });
+
+                let loaded =
+                    ids.length - missing.length;
+
+                for (
+                    let index = 0;
+                    index < missing.length;
+                    index +=
+                        VEHICLE_DISTANCE_CONCURRENCY
+                ) {
+                    const batch = missing.slice(
+                        index,
+                        index +
+                            VEHICLE_DISTANCE_CONCURRENCY
+                    );
+
+                    await Promise.all(
+                        batch.map(
+                            fetchVehicleDistance
+                        )
+                    );
+
+                    loaded += batch.length;
+
+                    if (onProgress) {
+                        onProgress(
+                            loaded,
+                            ids.length
+                        );
+                    }
+
+                    if (
+                        index +
+                            VEHICLE_DISTANCE_CONCURRENCY >=
+                            missing.length ||
+                        loaded %
+                            (VEHICLE_DISTANCE_CONCURRENCY *
+                                3) ===
+                            0
+                    ) {
+                        refreshVehicleSortView();
+                    }
+
+                    await delay(
+                        VEHICLE_DISTANCE_BATCH_DELAY
+                    );
+                }
+
+                if (onProgress) {
+                    onProgress(
+                        ids.length,
+                        ids.length
+                    );
+                }
+
+                scheduleVehicleSave();
+            } finally {
+                vehicleLoadPromise = null;
+            }
+        })();
+
+        return vehicleLoadPromise;
+    }
+
+    function formatKilometers(km) {
+        const number = Number(km);
+
+        if (Number.isNaN(number)) {
+            return '–';
+        }
+
+        return number.toLocaleString('de-DE', {
+            maximumFractionDigits:
+                number % 1 === 0 ? 0 : 1
+        });
+    }
+
+    function findVehicleRows() {
+        return Array.from(
+            document.querySelectorAll(
+                'div[class*="cursor-pointer"]'
+            )
+        ).filter(element => {
+            return isVehicleRow(element);
+        });
+    }
+
+    function isVehicleRow(element) {
+        if (
+            !element ||
+            element.nodeType !== 1
+        ) {
+            return false;
+        }
+
+        if (
+            !Array.from(
+                element.classList
+            ).includes(
+                'cursor-pointer'
+            )
+        ) {
+            return false;
+        }
+
+        const badge = element.querySelector(
+            ':scope > span[title^="Status "]'
+        );
+
+        const name =
+            getVehicleRowNameElement(element);
+
+        return !!(badge && name);
+    }
+
+    function getVehicleRowNameElement(row) {
+        const direct = row.querySelector(
+            ':scope > span.text-gray-700.truncate.flex-1[title]'
+        );
+
+        if (direct) {
+            return direct;
+        }
+
+        return Array.from(
+            row.children
+        ).find(child => {
+            if (child.tagName !== 'SPAN') {
+                return false;
+            }
+
+            const title =
+                child.getAttribute('title');
+
+            return (
+                !!title &&
+                !title.startsWith('Status ')
+            );
+        }) || null;
+    }
+
+    function getVehicleRowCallsign(row) {
+        const name =
+            getVehicleRowNameElement(row);
+
+        if (!name) {
+            return '';
+        }
+
+        return (
+            name.getAttribute('title') ||
+            name.textContent ||
+            ''
+        ).trim();
+    }
+
+    function getVehicleIDForCallsign(
+        callsign
+    ) {
+        if (!callsign) {
+            return '';
+        }
+
+        return (
+            vehicleCatalogByCallsign.get(
+                getAAOKey(callsign)
+            ) || ''
+        );
+    }
+
+    function getRowKilometers(row) {
+        const id = getVehicleIDForCallsign(
+            getVehicleRowCallsign(row)
+        );
+
+        const entry =
+            id ? vehicleDistance.get(id) : null;
+
+        return entry ? entry.km : null;
+    }
+
+    function setRowKilometers(row, km) {
+        let label = row.querySelector(
+            `.${VEHICLE_KM_CLASS}`
+        );
+
+        if (!label) {
+            label =
+                document.createElement('span');
+
+            label.className =
+                `${VEHICLE_KM_CLASS} flex-shrink-0`;
+
+            row.appendChild(label);
+        }
+
+        const text =
+            km == null
+                ? '–'
+                : `${formatKilometers(km)} km`;
+
+        if (label.textContent !== text) {
+            label.textContent = text;
+        }
+    }
+
+    function clearRowKilometers(row) {
+        const label = row.querySelector(
+            `.${VEHICLE_KM_CLASS}`
+        );
+
+        if (label) {
+            label.remove();
+        }
+    }
+
+    function getVehicleRowGroups() {
+        const groups = new Map();
+
+        for (const row of findVehicleRows()) {
+            const parent = row.parentElement;
+
+            if (!parent) {
+                continue;
+            }
+
+            if (!groups.has(parent)) {
+                groups.set(parent, []);
+            }
+
+            groups.get(parent).push(row);
+        }
+
+        return groups;
+    }
+
+    function sameElementOrder(left, right) {
+        if (left.length !== right.length) {
+            return false;
+        }
+
+        for (
+            let index = 0;
+            index < left.length;
+            index += 1
+        ) {
+            if (left[index] !== right[index]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function captureNativeVehicleOrder(groups) {
+        for (const [parent, rows] of groups) {
+            const callsigns =
+                rows.map(getVehicleRowCallsign);
+
+            const existing =
+                vehicleNativeOrder.get(parent);
+
+            if (!existing) {
+                vehicleNativeOrder.set(
+                    parent,
+                    callsigns
+                );
+            } else {
+                const known = new Set(existing);
+
+                for (const callsign of callsigns) {
+                    if (!known.has(callsign)) {
+                        existing.push(callsign);
+                    }
+                }
+            }
+        }
+    }
+
+    function applyVehicleSortToGroups() {
+        const groups =
+            getVehicleRowGroups();
+
+        for (const [parent, rows] of groups) {
+            const mapped = rows
+                .map(row => ({
+                    row,
+                    km: getRowKilometers(row)
+                }))
+                .sort((left, right) => {
+                    const leftKM =
+                        left.km == null
+                            ? -1
+                            : left.km;
+
+                    const rightKM =
+                        right.km == null
+                            ? -1
+                            : right.km;
+
+                    if (rightKM === leftKM) {
+                        return getVehicleRowCallsign(
+                            left.row
+                        ).localeCompare(
+                            getVehicleRowCallsign(
+                                right.row
+                            ),
+                            'de',
+                            {
+                                sensitivity:
+                                    'base'
+                            }
+                        );
+                    }
+
+                    return rightKM - leftKM;
+                });
+
+            if (
+                mapped.every(
+                    item => item.km == null
+                )
+            ) {
+                continue;
+            }
+
+            const desired =
+                mapped.map(item => item.row);
+
+            if (
+                !sameElementOrder(
+                    rows,
+                    desired
+                )
+            ) {
+                for (const item of mapped) {
+                    parent.appendChild(
+                        item.row
+                    );
+                }
+            }
+        }
+    }
+
+    function restoreNativeVehicleOrder() {
+        for (const [parent, callsigns] of
+            vehicleNativeOrder) {
+            if (
+                !parent ||
+                !parent.isConnected
+            ) {
+                continue;
+            }
+
+            const rowsByCallsign =
+                new Map();
+
+            for (const child of Array.from(
+                parent.children
+            )) {
+                if (isVehicleRow(child)) {
+                    rowsByCallsign.set(
+                        getVehicleRowCallsign(
+                            child
+                        ),
+                        child
+                    );
+                }
+            }
+
+            const restored =
+                callsigns.map(callsign => {
+                    return rowsByCallsign.get(
+                        callsign
+                    );
+                }).filter(Boolean);
+
+            const known =
+                new Set(callsigns);
+
+            const remaining =
+                Array.from(
+                    rowsByCallsign.keys()
+                ).filter(callsign => {
+                    return !known.has(
+                        callsign
+                    );
+                });
+
+            const current =
+                Array.from(
+                    parent.children
+                ).filter(isVehicleRow);
+
+            const desired =
+                restored.concat(
+                    remaining.map(callsign => {
+                        return rowsByCallsign.get(
+                            callsign
+                        );
+                    })
+                );
+
+            if (
+                !sameElementOrder(
+                    current,
+                    desired
+                )
+            ) {
+                for (const row of restored) {
+                    parent.appendChild(row);
+                }
+
+                for (const callsign of remaining) {
+                    parent.appendChild(
+                        rowsByCallsign.get(
+                            callsign
+                        )
+                    );
+                }
+            }
+        }
+
+        vehicleNativeOrder.clear();
+    }
+
+    function findVehicleSortAnchor() {
+        return Array.from(
+            document.querySelectorAll(
+                'button[data-slot="tooltip-trigger"], [data-slot="tooltip-trigger"]'
+            )
+        ).find(button => {
+            if (
+                !button.isConnected ||
+                button.id ===
+                    VEHICLE_SORT_CLUSTER_ID ||
+                button.closest(
+                    `#${VEHICLE_SORT_CLUSTER_ID}`
+                )
+            ) {
+                return false;
+            }
+
+            if (
+                !button.querySelector(
+                    'i[class*="fa-wrench"]'
+                )
+            ) {
+                return false;
+            }
+
+            const rects =
+                button.getClientRects();
+
+            return rects.length > 0;
+        }) || null;
+    }
+
+    function upsertVehicleSortCluster() {
+        const anchor =
+            findVehicleSortAnchor();
+
+        const rows =
+            findVehicleRows();
+
+        if (
+            !anchor &&
+            rows.length === 0
+        ) {
+            return false;
+        }
+
+        const useAnchor =
+            !!anchor &&
+            anchor.isConnected;
+
+        const insertionPoint =
+            useAnchor
+                ? anchor
+                : (
+                    rows.length > 0
+                        ? rows[0].parentElement
+                        : null
+                );
+
+        if (
+            !insertionPoint ||
+            !insertionPoint.parentElement
+        ) {
+            return false;
+        }
+
+        const root =
+            insertionPoint.parentElement;
+
+        let cluster =
+            document.getElementById(
+                VEHICLE_SORT_CLUSTER_ID
+            );
+
+        if (
+            cluster &&
+            cluster.parentElement !== root
+        ) {
+            root.insertBefore(
+                cluster,
+                useAnchor
+                    ? anchor.nextSibling
+                    : insertionPoint
+            );
+        }
+
+        if (!cluster) {
+            cluster =
+                document.createElement('div');
+
+            cluster.id =
+                VEHICLE_SORT_CLUSTER_ID;
+
+            cluster.className =
+                'afilia-vehicle-sort-cluster';
+
+            if (useAnchor) {
+                cluster.classList.add(
+                    'afilia-vehicle-sort-cluster-inline'
+                );
+            } else {
+                cluster.classList.add(
+                    'afilia-vehicle-sort-cluster-block'
+                );
+            }
+
+            root.insertBefore(
+                cluster,
+                useAnchor
+                    ? anchor.nextSibling
+                    : insertionPoint
+            );
+        }
+
+        return true;
+    }
+
+    function renderVehicleSortClusterContent() {
+        const cluster =
+            document.getElementById(
+                VEHICLE_SORT_CLUSTER_ID
+            );
+
+        if (!cluster) {
+            return;
+        }
+
+        if (
+            !cluster.querySelector(
+                '.afilia-vehicle-sort-toggle'
+            )
+        ) {
+            cluster.innerHTML = `
+                <button
+                    type="button"
+                    class="afilia-vehicle-sort-toggle"
+                    aria-pressed="${vehicleSortActive ? 'true' : 'false'}"
+                    title="Fahrzeuge nach gefahrenen Kilometern sortieren"
+                >
+                    <span class="afilia-vehicle-sort-toggle-icon">↕</span>
+                    <span class="afilia-vehicle-sort-toggle-label">
+                        ${
+                            vehicleSortActive
+                                ? 'Nach km sortiert'
+                                : 'Nach km sortieren'
+                        }
+                    </span>
+                </button>
+
+                <span class="afilia-vehicle-sort-status"></span>
+            `;
+
+            cluster.querySelector(
+                '.afilia-vehicle-sort-toggle'
+            ).addEventListener(
+                'click',
+                event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    toggleVehicleSort();
+                }
+            );
+        }
+
+        const toggle = cluster.querySelector(
+            '.afilia-vehicle-sort-toggle'
+        );
+
+        toggle.setAttribute(
+            'aria-pressed',
+            vehicleSortActive
+                ? 'true'
+                : 'false'
+        );
+
+        toggle.querySelector(
+            '.afilia-vehicle-sort-toggle-label'
+        ).textContent =
+            vehicleSortActive
+                ? 'Nach km sortiert'
+                : 'Nach km sortieren';
+    }
+
+    function updateVehicleSortStatus(
+        loaded,
+        total
+    ) {
+        const cluster =
+            document.getElementById(
+                VEHICLE_SORT_CLUSTER_ID
+            );
+
+        if (!cluster) {
+            return;
+        }
+
+        const status = cluster.querySelector(
+            '.afilia-vehicle-sort-status'
+        );
+
+        if (!status) {
+            return;
+        }
+
+        if (!vehicleSortActive) {
+            vehicleStatusLockUntil = 0;
+
+            if (status.textContent) {
+                status.textContent = '';
+            }
+
+            return;
+        }
+
+        if (
+            typeof loaded === 'number' &&
+            typeof total === 'number'
+        ) {
+            let text =
+                `km geladen: ${loaded}/${total}`;
+
+            if (
+                total > 0 &&
+                loaded >= total
+            ) {
+                text += ' ✓';
+            }
+
+            if (status.textContent !== text) {
+                status.textContent = text;
+            }
+
+            vehicleStatusLockUntil =
+                Date.now() + 2500;
+
+            return;
+        }
+
+        if (Date.now() < vehicleStatusLockUntil) {
+            return;
+        }
+
+        let text = '';
+
+        if (vehicleLoadPromise) {
+            text = 'km werden geladen …';
+        } else {
+            const known =
+                vehicleDistance.size;
+
+            if (known > 0) {
+                text =
+                    `km geladen: ${known} ✓`;
+            }
+        }
+
+        if (status.textContent !== text) {
+            status.textContent = text;
+        }
+    }
+
+    function refreshVehicleSortView() {
+        if (!vehicleSortActive) {
+            restoreNativeVehicleOrder();
+
+            for (const row of findVehicleRows()) {
+                clearRowKilometers(row);
+            }
+
+            updateVehicleSortStatus(
+                0,
+                0
+            );
+
+            return;
+        }
+
+        const groups =
+            getVehicleRowGroups();
+
+        if (groups.size > 0) {
+            captureNativeVehicleOrder(
+                groups
+            );
+        }
+
+        applyVehicleSortToGroups();
+
+        for (const row of findVehicleRows()) {
+            setRowKilometers(
+                row,
+                getRowKilometers(row)
+            );
+        }
+
+        updateVehicleSortStatus();
+    }
+
+    async function toggleVehicleSort() {
+        vehicleSortActive =
+            !vehicleSortActive;
+
+        try {
+            await dbSet(
+                VEHICLE_SORT_PREFS_KEY,
+                { active: vehicleSortActive }
+            );
+        } catch (error) {
+            console.debug(
+                '[Afilia Toolbox] Sort pref save failed:',
+                error
+            );
+        }
+
+        renderVehicleSortClusterContent();
+
+        refreshVehicleSortView();
+
+        if (vehicleSortActive) {
+            loadVehicleDistances(
+                (loaded, total) => {
+                    updateVehicleSortStatus(
+                        loaded,
+                        total
+                    );
+                }
+            ).catch(() => {});
+        }
+    }
+
+    function updateVehicleSortView() {
+        const hasRows =
+            findVehicleRows().length > 0;
+
+        if (!hasRows) {
+            vehicleTabPresent = false;
+
+            vehicleNativeOrder.clear();
+
+            return;
+        }
+
+        if (!upsertVehicleSortCluster()) {
+            return;
+        }
+
+        renderVehicleSortClusterContent();
+
+        refreshVehicleSortView();
+
+        if (
+            vehicleSortActive &&
+            !vehicleLoadPromise
+        ) {
+            loadVehicleDistances(
+                (loaded, total) => {
+                    updateVehicleSortStatus(
+                        loaded,
+                        total
+                    );
+
+                    refreshVehicleSortView();
+                }
+            ).catch(() => {});
+        }
+    }
+
+    /* =========================================================
        CSS
        ========================================================= */
 
@@ -3069,6 +4497,77 @@
             }
 
             /* =====================================================
+               Vehicle kilometre sort
+               ===================================================== */
+
+            .afilia-vehicle-sort-cluster {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .afilia-vehicle-sort-cluster-block {
+                width: 100%;
+                padding: 6px 8px;
+                margin-bottom: 4px;
+                border: 1px solid #e5e7eb;
+                border-radius: 10px;
+                background: #ffffff;
+            }
+
+            .afilia-vehicle-sort-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 5px 10px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                background: #ffffff;
+                color: #111827;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            .afilia-vehicle-sort-cluster-inline
+            .afilia-vehicle-sort-toggle {
+                height: 32px;
+                padding: 0 10px;
+                border-color: #d1d5db;
+            }
+
+            .afilia-vehicle-sort-toggle:hover {
+                background: #f3f4f6;
+            }
+
+            .afilia-vehicle-sort-toggle[aria-pressed="true"] {
+                border-color: #ef4444;
+                background: #fef2f2;
+                color: #dc2626;
+            }
+
+            .afilia-vehicle-sort-status {
+                font-size: 11px;
+                color: #6b7280;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .afilia-vehicle-sort-cluster-inline
+            .afilia-vehicle-sort-status {
+                max-width: 120px;
+            }
+
+            .afilia-vehicle-km {
+                flex-shrink: 0;
+                font-size: 11px;
+                color: #6b7280;
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+            }
+
+            /* =====================================================
                Mobile
                ===================================================== */
 
@@ -3177,6 +4676,8 @@
 
             lastDispatchContainer = null;
         }
+
+        updateVehicleSortView();
     }
 
     function scheduleScan() {
@@ -3259,6 +4760,8 @@
             await loadData();
 
             injectStyles();
+
+            installVehicleNetworkHooks();
 
             discoverAAOs();
 

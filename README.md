@@ -12,8 +12,10 @@ Es:
 - prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin,
 - synchronisiert die Anzeige automatisch mit Änderungen im Spiel.
 - fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
+- lädt den gefahrenen Kilometerstand aller Fahrzeuge und zeigt ihn in der Fahrzeugliste an.
+- sortiert die Fahrzeugliste auf Wunsch nach gefahrenen Kilometern (absteigend).
 
-TLDR: Es erweitert nur die lokale AAO-Verwaltung und Fahrzeug-Alarmierung.
+TLDR: Es erweitert nur die lokale AAO-Verwaltung, Fahrzeug-Alarmierung und die Fahrzeugliste.
 
 Dieses Tool benutzt keine Automatisierungswerkzeuge oder andere durch die AGB und Regeln verbotene Funktionen, es erweitert nur die AAO Funktionen durch Kategorieren im Einstellungs und Dispatch Fenster.
 Der Quellcode wird hier immer sichtbar und einsehbar sein und kann jederzeit durch die Administration geprüft und genehmigt oder abgelehnt werden.
