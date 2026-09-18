@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.7.3
+// @version      1.7.4
 // @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
@@ -22,7 +22,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.7.3';
+    const SCRIPT_VERSION = '1.7.4';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -83,6 +83,9 @@
     ];
 
     const CHANGELOG = {
+        '1.7.4': [
+            'Fahrzeugliste: Ein neuer Aktualisieren-Knopf lädt die Kilometerstände aller Fahrzeuge sofort neu.'
+        ],
         '1.7.3': [
             'Fahrzeugliste: Fahrzeuge mit mehr als 30.000 gefahrenen Kilometern erhalten ein Warnsymbol neben dem Kilometerstand.',
             'Ein Klick auf das Warnsymbol öffnet einen Hinweis zur erhöhten Laufleistung und möglichen Reparaturkosten.'
@@ -3045,12 +3048,15 @@
             };
     }
 
-    async function ensureVehicleCatalog() {
+    async function ensureVehicleCatalog(force) {
         if (!resolveGameSessionID()) {
             return;
         }
 
-        if (vehicleCatalog.size === 0) {
+        if (
+            vehicleCatalog.size === 0 &&
+            !force
+        ) {
             const cached =
                 await dbGet(VEHICLE_CATALOG_KEY);
 
@@ -3064,7 +3070,7 @@
             }
         }
 
-        if (vehicleCatalog.size > 0) {
+        if (vehicleCatalog.size > 0 && !force) {
             return;
         }
 
@@ -3248,13 +3254,15 @@
     }
 
     async function loadVehicleDistances(
-        onProgress
+        onProgress,
+        force
     ) {
         if (vehicleLoadPromise) {
             return vehicleLoadPromise;
         }
 
         if (
+            !force &&
             Date.now() < vehicleNextLoadAt
         ) {
             return Promise.resolve();
@@ -3262,18 +3270,20 @@
 
         vehicleLoadPromise = (async () => {
             try {
-                await ensureVehicleCatalog();
+                await ensureVehicleCatalog(force);
 
                 const ids =
                     Array.from(
                         vehicleCatalog.keys()
                     );
 
-                const missing = ids.filter(id => {
-                    return !isVehicleDistanceFresh(
-                        id
-                    );
-                });
+                const missing = force
+                    ? ids.slice()
+                    : ids.filter(id => {
+                          return !isVehicleDistanceFresh(
+                              id
+                          );
+                      });
 
                 if (missing.length === 0) {
                     return;
@@ -3367,6 +3377,33 @@
         })();
 
         return vehicleLoadPromise;
+    }
+
+    function forceReloadVehicleDistances() {
+        if (vehicleLoadPromise) {
+            return;
+        }
+
+        vehicleNextLoadAt = 0;
+
+        loadVehicleDistances(
+            (
+                known,
+                failed,
+                total,
+                completed
+            ) => {
+                updateVehicleSortStatus(
+                    known,
+                    failed,
+                    total,
+                    completed
+                );
+
+                refreshVehicleSortView();
+            },
+            true
+        ).catch(() => {});
     }
 
     function formatKilometers(km) {
@@ -4136,6 +4173,15 @@
                 </button>
 
                 <span class="afilia-vehicle-sort-status"></span>
+
+                <button
+                    type="button"
+                    class="afilia-vehicle-sort-reload"
+                    title="Kilometerstände jetzt neu laden"
+                    aria-label="Kilometerstände jetzt neu laden"
+                >
+                    <span class="afilia-vehicle-sort-reload-icon">⟳</span>
+                </button>
             `;
 
             cluster.querySelector(
@@ -4147,6 +4193,18 @@
                     event.stopPropagation();
 
                     toggleVehicleSort();
+                }
+            );
+
+            cluster.querySelector(
+                '.afilia-vehicle-sort-reload'
+            ).addEventListener(
+                'click',
+                event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    forceReloadVehicleDistances();
                 }
             );
         }
@@ -4168,6 +4226,14 @@
             vehicleSortActive
                 ? 'Nach km sortiert'
                 : 'Nach km sortieren';
+
+        const reload = cluster.querySelector(
+            '.afilia-vehicle-sort-reload'
+        );
+
+        if (reload) {
+            reload.hidden = !vehicleSortActive;
+        }
     }
 
     function updateVehicleSortStatus(
@@ -5057,6 +5123,36 @@
                 border-color: #ef4444;
                 background: #fef2f2;
                 color: #dc2626;
+            }
+
+            .afilia-vehicle-sort-reload {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                width: 32px;
+                height: 32px;
+                padding: 0;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                background: #ffffff;
+                color: #374151;
+                font-size: 16px;
+                line-height: 1;
+                cursor: pointer;
+            }
+
+            .afilia-vehicle-sort-reload:hover {
+                background: #f3f4f6;
+            }
+
+            .afilia-vehicle-sort-reload[hidden] {
+                display: none;
+            }
+
+            .afilia-vehicle-sort-cluster-inline
+            .afilia-vehicle-sort-reload {
+                height: 32px;
             }
 
             .afilia-vehicle-sort-status {

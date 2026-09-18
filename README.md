@@ -1,27 +1,54 @@
 # RO-Afilia Toolbox
-QoL Skript für Rescue Operator das verschiedene Grafische Änderungen mit sich bringt.
 
-Es:
+Ein Quality-of-Life-Userscript für [Rescue Operator](https://game.rescue-operator.com/), das die AAO-Verwaltung, das Alarmierungsfenster und die Fahrzeugliste übersichtlicher macht.
 
-- erkennt vorhandene AAOs im Spiel,
-- lässt User sie in eigene Kategorien wie Brandbekämpfung, Technische Hilfe und Rettungsdienst sortieren,
-- speichert Kategorien und Zuordnungen lokal im Browser über IndexedDB,
-- ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht,
-- ermöglicht Suche, Ein-/Ausblenden, Bearbeiten und Löschen von AAOs,
-- ermöglicht das individuelle Verschieben und Sortieren der Kategorien per Drag-and-Drop,
-- prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin,
-- synchronisiert die Anzeige automatisch mit Änderungen im Spiel.
-- fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
-- lädt den gefahrenen Kilometerstand aller Fahrzeuge und zeigt ihn in der Fahrzeugliste an.
-- sortiert die Fahrzeugliste auf Wunsch nach gefahrenen Kilometern (absteigend).
-- warnt bei Fahrzeugen mit mehr als 30.000 gefahrenen Kilometern mit einem klickbaren Warnsymbol.
+Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwendet keine Automatisierungswerkzeuge oder andere durch die AGB verbotene Funktionen.
 
-TLDR: Es erweitert nur die lokale AAO-Verwaltung, Fahrzeug-Alarmierung und die Fahrzeugliste.
+## Funktionen
 
-Dieses Tool benutzt keine Automatisierungswerkzeuge oder andere durch die AGB und Regeln verbotene Funktionen, es erweitert das Spiel nur mit nützlichen Funktionen.
-Der Quellcode wird hier immer sichtbar und einsehbar sein und kann jederzeit durch die Administration geprüft und genehmigt oder abgelehnt werden.
+### AAO-Verwaltung
+- Erkennt vorhandene AAOs im Spiel automatisch.
+- Sortiert AAOs in eigene Kategorien wie Brandbekämpfung, Technische Hilfe und Rettungsdienst.
+- Ermöglicht das individuelle Verschieben und Sortieren der Kategorien per Drag-and-Drop.
+- Bietet Suche, Ein-/Ausblenden, Bearbeiten und Löschen von AAOs.
+- Synchronisiert die Ansicht automatisch mit Änderungen im Spiel.
 
-# Geplante Features
+### Alarmierung
+- Ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.
+- Hält die Suchfilter zwischen Ansicht und Spiel synchron.
 
-- UI Overhaul für diverse Fenster z.b Krankenhausübersicht
-- 'Applet Store' um Toolbox und dessen Funktionen zu personalisieren.
+### Fahrzeugliste
+- Lädt den gefahrenen Kilometerstand aller Fahrzeuge und zeigt ihn in der Fahrzeugliste an.
+- Sortiert die Fahrzeugliste auf Wunsch nach gefahrenen Kilometern (absteigend).
+- Warnt bei Fahrzeugen mit mehr als 30.000 gefahrenen Kilometern mit einem klickbaren Warnsymbol.
+- Bietet einen Aktualisieren-Knopf, um die Kilometerstände manuell neu zu laden.
+- Zwischenspeichert die Daten lokal, damit nicht bei jedem Öffnen alles neu geladen werden muss.
+
+### Notizblock
+- Fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
+- Speichert Notizen automatisch lokal.
+
+### Updates
+- Prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin.
+- Zeigt nach einem Update ein Popup mit den Neuerungen der neuen Version.
+
+## Installation
+
+1. Einen Userscript-Manager installieren, z. B. [Tampermonkey](https://www.tampermonkey.net/).
+2. Das Skript über die folgende Adresse installieren:
+   [AfiliaToolbox.user.js](https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js)
+3. In Rescue Operator neu laden – die Toolbox wird automatisch eingebunden.
+
+## Datenschutz & Speicherung
+
+- Kategorien, Zuordnungen, Notizen und zwischengespeicherte Fahrzeugdaten werden ausschließlich lokal im Browser über IndexedDB gespeichert.
+- Es werden keine Daten an externe Server gesendet.
+
+## Hinweis
+
+Der Quellcode ist hier jederzeit einsehbar und kann von der Administration geprüft, genehmigt oder abgelehnt werden.
+
+## Geplante Features
+
+- UI-Overhaul für diverse Fenster, z. B. Krankenhausübersicht.
+- „Applet Store", um die Toolbox und ihre Funktionen zu personalisieren.
