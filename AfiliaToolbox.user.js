@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.7.1
+// @version      1.7.2
 // @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
+// @updateURL    https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
+// @downloadURL  https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -20,7 +22,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.7.1';
+    const SCRIPT_VERSION = '1.7.2';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -53,6 +55,9 @@
     const VEHICLE_DISTANCE_CONCURRENCY = 8;
     const VEHICLE_DISTANCE_BATCH_DELAY = 80;
     const VEHICLE_SAVE_DELAY = 1200;
+    const VEHICLE_DONE_HIDE_DELAY = 4000;
+    const VEHICLE_DISTANCE_RELOAD_DELAY =
+        10000;
 
     const DEFAULT_CATEGORIES = [
         {
@@ -73,6 +78,10 @@
     ];
 
     const CHANGELOG = {
+        '1.7.2': [
+            'Fahrzeugliste: Die Fortschrittsanzeige beim Laden der Kilometerstände verschwindet nach dem Laden automatisch.',
+            'Fahrzeugliste: Kilometerstände werden robuster aus der API gelesen; fehlgeschlagene Abrufe werden angezeigt.'
+        ],
         '1.7.0': [
             'Fahrzeugliste: Der gefahrene Kilometerstand wird automatisch für alle Fahrzeuge geladen und neben jedem Fahrzeug angezeigt.',
             'Neuer Schalter „Nach km sortieren" sortiert die Fahrzeugliste nach gefahrenen Kilometern (absteigend).',
@@ -120,6 +129,9 @@
     let vehicleSaveTimer = null;
     let vehicleTabPresent = false;
     let vehicleStatusLockUntil = 0;
+    let vehicleStatusDoneUntil = 0;
+    let vehicleStatusHideTimer = null;
+    let vehicleNextLoadAt = 0;
     const vehicleNativeOrder = new Map();
 
     /* =========================================================
@@ -2746,23 +2758,117 @@
         }
     }
 
-    function handleVehicleDataPayload(payload) {
-        const vehicle = payload && (
-            payload.data ||
-            payload.vehicle ||
-            payload
-        );
+    function extractVehicleDataFromPayload(
+        payload,
+        idHint
+    ) {
+        if (
+            !payload ||
+            typeof payload !== 'object'
+        ) {
+            return null;
+        }
+
+        const hasId =
+            typeof payload.id === 'number' ||
+            typeof payload.id === 'string';
+
+        const hasKm =
+            typeof payload.total_driven_kilometers ===
+            'number';
+
+        if (hasId && hasKm) {
+            if (
+                !idHint ||
+                String(payload.id) ===
+                    String(idHint)
+            ) {
+                return payload;
+            }
+
+            return null;
+        }
+
+        if (Array.isArray(payload)) {
+            for (const item of payload) {
+                const found =
+                    extractVehicleDataFromPayload(
+                        item,
+                        idHint
+                    );
+
+                if (found) {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        for (const key of Object.keys(payload)) {
+            const value = payload[key];
+
+            if (
+                value &&
+                typeof value === 'object'
+            ) {
+                const found =
+                    extractVehicleDataFromPayload(
+                        value,
+                        idHint
+                    );
+
+                if (found) {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function extractVehicleIdFromURL(url) {
+        if (!url) {
+            return '';
+        }
+
+        const match =
+            url.match(/[?&]vehicleId=([^&]+)/);
+
+        return match
+            ? decodeURIComponent(match[1])
+            : '';
+    }
+
+    function handleVehicleDataPayload(
+        payload,
+        idHint
+    ) {
+        const vehicle =
+            extractVehicleDataFromPayload(
+                payload,
+                idHint
+            );
 
         if (
             !vehicle ||
-            !vehicle.id ||
             typeof vehicle.total_driven_kilometers !==
                 'number'
         ) {
             return;
         }
 
-        vehicleDistance.set(vehicle.id, {
+        const vehicleId =
+            typeof vehicle.id === 'number' ||
+            typeof vehicle.id === 'string'
+                ? vehicle.id
+                : idHint;
+
+        if (!vehicleId) {
+            return;
+        }
+
+        vehicleDistance.set(vehicleId, {
             km: vehicle.total_driven_kilometers,
             fetchedAt: Date.now()
         });
@@ -2834,9 +2940,14 @@
                             response
                                 .clone()
                                 .json()
-                                .then(
-                                    handleVehicleDataPayload
-                                )
+                                .then(payload => {
+                                    handleVehicleDataPayload(
+                                        payload,
+                                        extractVehicleIdFromURL(
+                                            url
+                                        )
+                                    );
+                                })
                                 .catch(() => {});
                         }
                     }).catch(() => {});
@@ -2905,7 +3016,10 @@
                                 )
                             ) {
                                 handleVehicleDataPayload(
-                                    payload
+                                    payload,
+                                    extractVehicleIdFromURL(
+                                        url
+                                    )
                                 );
                             }
                         } catch (error) {
@@ -3091,25 +3205,28 @@
             const payload =
                 await response.json();
 
-            const vehicle = payload && (
-                payload.data ||
-                payload.vehicle ||
-                payload
-            );
+            const vehicle =
+                extractVehicleDataFromPayload(
+                    payload,
+                    id
+                );
 
             if (
                 vehicle &&
                 typeof vehicle.total_driven_kilometers ===
                     'number'
             ) {
-                vehicleDistance.set(
-                    vehicle.id,
-                    {
-                        km:
-                            vehicle.total_driven_kilometers,
-                        fetchedAt: Date.now()
-                    }
-                );
+                const vehicleId =
+                    typeof vehicle.id === 'number' ||
+                    typeof vehicle.id === 'string'
+                        ? vehicle.id
+                        : id;
+
+                vehicleDistance.set(vehicleId, {
+                    km:
+                        vehicle.total_driven_kilometers,
+                    fetchedAt: Date.now()
+                });
 
                 return true;
             }
@@ -3127,6 +3244,12 @@
             return vehicleLoadPromise;
         }
 
+        if (
+            Date.now() < vehicleNextLoadAt
+        ) {
+            return Promise.resolve();
+        }
+
         vehicleLoadPromise = (async () => {
             try {
                 await ensureVehicleCatalog();
@@ -3142,8 +3265,13 @@
                     );
                 });
 
-                let loaded =
+                if (missing.length === 0) {
+                    return;
+                }
+
+                let known =
                     ids.length - missing.length;
+                let failed = 0;
 
                 for (
                     let index = 0;
@@ -3157,18 +3285,29 @@
                             VEHICLE_DISTANCE_CONCURRENCY
                     );
 
-                    await Promise.all(
-                        batch.map(
-                            fetchVehicleDistance
-                        )
-                    );
+                    const results =
+                        await Promise.all(
+                            batch.map(
+                                fetchVehicleDistance
+                            )
+                        );
 
-                    loaded += batch.length;
+                    known +=
+                        results.filter(
+                            Boolean
+                        ).length;
+
+                    failed +=
+                        results.filter(
+                            result => !result
+                        ).length;
 
                     if (onProgress) {
                         onProgress(
-                            loaded,
-                            ids.length
+                            known,
+                            failed,
+                            ids.length,
+                            false
                         );
                     }
 
@@ -3176,7 +3315,7 @@
                         index +
                             VEHICLE_DISTANCE_CONCURRENCY >=
                             missing.length ||
-                        loaded %
+                        known %
                             (VEHICLE_DISTANCE_CONCURRENCY *
                                 3) ===
                             0
@@ -3191,7 +3330,18 @@
 
                 if (onProgress) {
                     onProgress(
+                        known,
+                        failed,
                         ids.length,
+                        true
+                    );
+                }
+
+                if (failed > 0) {
+                    console.debug(
+                        '[Afilia Toolbox] Vehicle km fetch failed:',
+                        failed,
+                        'of',
                         ids.length
                     );
                 }
@@ -3199,6 +3349,10 @@
                 scheduleVehicleSave();
             } finally {
                 vehicleLoadPromise = null;
+
+                vehicleNextLoadAt =
+                    Date.now() +
+                    VEHICLE_DISTANCE_RELOAD_DELAY;
             }
         })();
 
@@ -3752,8 +3906,10 @@
     }
 
     function updateVehicleSortStatus(
-        loaded,
-        total
+        known,
+        failed,
+        total,
+        completed
     ) {
         const cluster =
             document.getElementById(
@@ -3774,6 +3930,15 @@
 
         if (!vehicleSortActive) {
             vehicleStatusLockUntil = 0;
+            vehicleStatusDoneUntil = 0;
+
+            if (vehicleStatusHideTimer) {
+                clearTimeout(
+                    vehicleStatusHideTimer
+                );
+
+                vehicleStatusHideTimer = null;
+            }
 
             if (status.textContent) {
                 status.textContent = '';
@@ -3783,21 +3948,83 @@
         }
 
         if (
-            typeof loaded === 'number' &&
+            typeof known === 'number' &&
             typeof total === 'number'
         ) {
+            const failedCount =
+                typeof failed === 'number'
+                    ? failed
+                    : 0;
+
+            const isCompleted =
+                completed === true;
+
             let text =
-                `km geladen: ${loaded}/${total}`;
+                `km geladen: ${known}/${total}`;
 
             if (
-                total > 0 &&
-                loaded >= total
+                isCompleted &&
+                failedCount > 0
+            ) {
+                text +=
+                    ` (${failedCount} fehlgeschlagen)`;
+            } else if (
+                isCompleted &&
+                known >= total
             ) {
                 text += ' ✓';
             }
 
             if (status.textContent !== text) {
                 status.textContent = text;
+            }
+
+            if (isCompleted) {
+                vehicleStatusDoneUntil =
+                    Date.now() +
+                    VEHICLE_DONE_HIDE_DELAY;
+
+                if (vehicleStatusHideTimer) {
+                    clearTimeout(
+                        vehicleStatusHideTimer
+                    );
+                }
+
+                vehicleStatusHideTimer =
+                    setTimeout(() => {
+                        vehicleStatusHideTimer =
+                            null;
+
+                        vehicleStatusDoneUntil = 0;
+
+                        const clusterElement =
+                            document.getElementById(
+                                VEHICLE_SORT_CLUSTER_ID
+                            );
+
+                        const statusElement =
+                            clusterElement?.querySelector(
+                                '.afilia-vehicle-sort-status'
+                            );
+
+                        if (
+                            statusElement &&
+                            statusElement.textContent
+                        ) {
+                            statusElement.textContent =
+                                '';
+                        }
+                    }, VEHICLE_DONE_HIDE_DELAY);
+            } else {
+                vehicleStatusDoneUntil = 0;
+
+                if (vehicleStatusHideTimer) {
+                    clearTimeout(
+                        vehicleStatusHideTimer
+                    );
+
+                    vehicleStatusHideTimer = null;
+                }
             }
 
             vehicleStatusLockUntil =
@@ -3810,22 +4037,26 @@
             return;
         }
 
-        let text = '';
-
-        if (vehicleLoadPromise) {
-            text = 'km werden geladen …';
-        } else {
-            const known =
-                vehicleDistance.size;
-
-            if (known > 0) {
-                text =
-                    `km geladen: ${known} ✓`;
-            }
+        if (Date.now() < vehicleStatusDoneUntil) {
+            return;
         }
 
-        if (status.textContent !== text) {
-            status.textContent = text;
+        if (vehicleStatusDoneUntil > 0) {
+            vehicleStatusDoneUntil = 0;
+
+            if (status.textContent) {
+                status.textContent = '';
+            }
+        } else if (vehicleLoadPromise) {
+            if (
+                status.textContent !==
+                'km werden geladen …'
+            ) {
+                status.textContent =
+                    'km werden geladen …';
+            }
+        } else if (status.textContent) {
+            status.textContent = '';
         }
     }
 
@@ -3887,11 +4118,20 @@
         refreshVehicleSortView();
 
         if (vehicleSortActive) {
+            vehicleNextLoadAt = 0;
+
             loadVehicleDistances(
-                (loaded, total) => {
+                (
+                    known,
+                    failed,
+                    total,
+                    completed
+                ) => {
                     updateVehicleSortStatus(
-                        loaded,
-                        total
+                        known,
+                        failed,
+                        total,
+                        completed
                     );
                 }
             ).catch(() => {});
@@ -3920,13 +4160,21 @@
 
         if (
             vehicleSortActive &&
-            !vehicleLoadPromise
+            !vehicleLoadPromise &&
+            Date.now() >= vehicleNextLoadAt
         ) {
             loadVehicleDistances(
-                (loaded, total) => {
+                (
+                    known,
+                    failed,
+                    total,
+                    completed
+                ) => {
                     updateVehicleSortStatus(
-                        loaded,
-                        total
+                        known,
+                        failed,
+                        total,
+                        completed
                     );
 
                     refreshVehicleSortView();
