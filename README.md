@@ -14,6 +14,7 @@ Es:
 - fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
 - lädt den gefahrenen Kilometerstand aller Fahrzeuge und zeigt ihn in der Fahrzeugliste an.
 - sortiert die Fahrzeugliste auf Wunsch nach gefahrenen Kilometern (absteigend).
+- warnt bei Fahrzeugen mit mehr als 30.000 gefahrenen Kilometern mit einem klickbaren Warnsymbol.
 
 TLDR: Es erweitert nur die lokale AAO-Verwaltung, Fahrzeug-Alarmierung und die Fahrzeugliste.
 

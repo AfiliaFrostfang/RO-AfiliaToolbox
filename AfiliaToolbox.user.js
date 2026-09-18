@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.7.2
+// @version      1.7.3
 // @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
@@ -22,7 +22,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.7.2';
+    const SCRIPT_VERSION = '1.7.3';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -41,6 +41,11 @@
 
     const VEHICLE_SORT_CLUSTER_ID = 'afilia-vehicle-sort-cluster';
     const VEHICLE_KM_CLASS = 'afilia-vehicle-km';
+    const VEHICLE_KM_WARNING_CLASS =
+        'afilia-vehicle-km-warning';
+    const VEHICLE_MILEAGE_WARNING_POPUP_ID =
+        'afilia-vehicle-mileage-warning-popup';
+    const VEHICLE_HIGH_MILEAGE_KM = 30000;
     const VEHICLE_CATALOG_KEY = 'vehicleCatalog';
     const VEHICLE_DISTANCE_KEY = 'vehicleDistanceCache';
     const VEHICLE_SORT_PREFS_KEY = 'vehicleSortPrefs';
@@ -78,6 +83,10 @@
     ];
 
     const CHANGELOG = {
+        '1.7.3': [
+            'Fahrzeugliste: Fahrzeuge mit mehr als 30.000 gefahrenen Kilometern erhalten ein Warnsymbol neben dem Kilometerstand.',
+            'Ein Klick auf das Warnsymbol öffnet einen Hinweis zur erhöhten Laufleistung und möglichen Reparaturkosten.'
+        ],
         '1.7.2': [
             'Fahrzeugliste: Die Fortschrittsanzeige beim Laden der Kilometerstände verschwindet nach dem Laden automatisch.',
             'Fahrzeugliste: Kilometerstände werden robuster aus der API gelesen; fehlgeschlagene Abrufe werden angezeigt.'
@@ -132,6 +141,7 @@
     let vehicleStatusDoneUntil = 0;
     let vehicleStatusHideTimer = null;
     let vehicleNextLoadAt = 0;
+    let vehicleMileageWarningPopup = null;
     const vehicleNativeOrder = new Map();
 
     /* =========================================================
@@ -3499,15 +3509,270 @@
         if (label.textContent !== text) {
             label.textContent = text;
         }
+
+        updateRowMileageWarning(row, label, km);
+    }
+
+    function updateRowMileageWarning(row, label, km) {
+        let warning = row.querySelector(
+            `.${VEHICLE_KM_WARNING_CLASS}`
+        );
+
+        const needsWarning =
+            typeof km === 'number' &&
+            km >= VEHICLE_HIGH_MILEAGE_KM;
+
+        if (!needsWarning) {
+            if (warning) {
+                warning.remove();
+            }
+
+            return;
+        }
+
+        if (!warning) {
+            warning =
+                document.createElement('button');
+
+            warning.type = 'button';
+
+            warning.className =
+                `${VEHICLE_KM_WARNING_CLASS} flex-shrink-0`;
+
+            warning.title = 'Erhöhte Laufleistung';
+
+            warning.setAttribute(
+                'aria-label',
+                'Warnung: erhöhte Laufleistung'
+            );
+
+            warning.textContent = '⚠';
+
+            warning.addEventListener(
+                'click',
+                event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    showVehicleMileageWarningPopup(
+                        warning
+                    );
+                }
+            );
+
+            label.insertAdjacentElement(
+                'afterend',
+                warning
+            );
+        }
+    }
+
+    function showVehicleMileageWarningPopup(anchor) {
+        closeVehicleMileageWarningPopup();
+
+        const popup =
+            document.createElement('div');
+
+        popup.id =
+            VEHICLE_MILEAGE_WARNING_POPUP_ID;
+
+        popup.className =
+            'afilia-vehicle-mileage-warning-popup';
+
+        popup.setAttribute('role', 'dialog');
+
+        popup.innerHTML = `
+            <div class="afilia-vehicle-mileage-warning-popup-title">⚠ Erhöhte Laufleistung</div>
+            <div class="afilia-vehicle-mileage-warning-popup-text">Fahrzeug weist erhöhte Laufleistung auf. Reparatur könnte bald teurer werden.</div>
+            <button type="button" class="afilia-vehicle-mileage-warning-popup-close">Verstanden</button>
+        `;
+
+        document.body.appendChild(popup);
+
+        positionVehicleMileageWarningPopup(
+            popup,
+            anchor
+        );
+
+        const closeButton = popup.querySelector(
+            '.afilia-vehicle-mileage-warning-popup-close'
+        );
+
+        closeButton.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            closeVehicleMileageWarningPopup();
+        });
+
+        const onDocumentClick = event => {
+            if (popup.contains(event.target)) {
+                return;
+            }
+
+            closeVehicleMileageWarningPopup();
+        };
+
+        const onKeydown = event => {
+            if (event.key === 'Escape') {
+                closeVehicleMileageWarningPopup();
+            }
+        };
+
+        const onViewportChange = () => {
+            closeVehicleMileageWarningPopup();
+        };
+
+        vehicleMileageWarningPopup = {
+            popup,
+            onDocumentClick,
+            onKeydown,
+            onViewportChange
+        };
+
+        setTimeout(() => {
+            if (
+                !vehicleMileageWarningPopup ||
+                vehicleMileageWarningPopup.popup !==
+                    popup
+            ) {
+                return;
+            }
+
+            document.addEventListener(
+                'click',
+                onDocumentClick
+            );
+
+            document.addEventListener(
+                'keydown',
+                onKeydown
+            );
+
+            window.addEventListener(
+                'scroll',
+                onViewportChange,
+                true
+            );
+
+            window.addEventListener(
+                'resize',
+                onViewportChange
+            );
+        }, 0);
+    }
+
+    function positionVehicleMileageWarningPopup(
+        popup,
+        anchor
+    ) {
+        if (!anchor || !anchor.getBoundingClientRect) {
+            popup.style.left = '50%';
+            popup.style.top = '50%';
+            popup.style.transform =
+                'translate(-50%, -50%)';
+
+            return;
+        }
+
+        const anchorRect =
+            anchor.getBoundingClientRect();
+
+        const popupRect =
+            popup.getBoundingClientRect();
+
+        const margin = 8;
+
+        let left =
+            anchorRect.right - popupRect.width;
+
+        left = Math.max(
+            margin,
+            Math.min(
+                left,
+                window.innerWidth -
+                    popupRect.width -
+                    margin
+            )
+        );
+
+        let top = anchorRect.bottom + margin;
+
+        if (
+            top + popupRect.height >
+            window.innerHeight - margin
+        ) {
+            top =
+                anchorRect.top -
+                popupRect.height -
+                margin;
+        }
+
+        top = Math.max(
+            margin,
+            Math.min(
+                top,
+                window.innerHeight -
+                    popupRect.height -
+                    margin
+            )
+        );
+
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+    }
+
+    function closeVehicleMileageWarningPopup() {
+        if (!vehicleMileageWarningPopup) {
+            return;
+        }
+
+        const {
+            popup,
+            onDocumentClick,
+            onKeydown,
+            onViewportChange
+        } = vehicleMileageWarningPopup;
+
+        document.removeEventListener(
+            'click',
+            onDocumentClick
+        );
+
+        document.removeEventListener(
+            'keydown',
+            onKeydown
+        );
+
+        window.removeEventListener(
+            'scroll',
+            onViewportChange,
+            true
+        );
+
+        window.removeEventListener(
+            'resize',
+            onViewportChange
+        );
+
+        if (popup && popup.parentElement) {
+            popup.remove();
+        }
+
+        vehicleMileageWarningPopup = null;
     }
 
     function clearRowKilometers(row) {
-        const label = row.querySelector(
-            `.${VEHICLE_KM_CLASS}`
-        );
+        for (const selector of [
+            `.${VEHICLE_KM_CLASS}`,
+            `.${VEHICLE_KM_WARNING_CLASS}`
+        ]) {
+            const element =
+                row.querySelector(selector);
 
-        if (label) {
-            label.remove();
+            if (element) {
+                element.remove();
+            }
         }
     }
 
@@ -4813,6 +5078,69 @@
                 color: #6b7280;
                 font-variant-numeric: tabular-nums;
                 white-space: nowrap;
+            }
+
+            .afilia-vehicle-km-warning {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                width: 18px;
+                height: 18px;
+                padding: 0;
+                border: 1px solid #fcd34d;
+                border-radius: 5px;
+                background: #fef3c7;
+                color: #b45309;
+                font-size: 12px;
+                line-height: 1;
+                cursor: pointer;
+            }
+
+            .afilia-vehicle-km-warning:hover {
+                background: #fde68a;
+            }
+
+            .afilia-vehicle-mileage-warning-popup {
+                position: fixed;
+                z-index: 2147483000;
+                width: min(300px, calc(100vw - 24px));
+                padding: 12px 14px;
+                border: 1px solid #fcd34d;
+                border-radius: 10px;
+                background: #fffbeb;
+                box-shadow: 0 12px 32px rgba(17, 24, 39, 0.25);
+                color: #78350f;
+                font-size: 13px;
+                box-sizing: border-box;
+            }
+
+            .afilia-vehicle-mileage-warning-popup-title {
+                margin-bottom: 6px;
+                color: #92400e;
+                font-size: 13px;
+                font-weight: 700;
+            }
+
+            .afilia-vehicle-mileage-warning-popup-text {
+                margin-bottom: 10px;
+                line-height: 1.5;
+            }
+
+            .afilia-vehicle-mileage-warning-popup-close {
+                padding: 5px 12px;
+                border: 1px solid #f59e0b;
+                border-radius: 6px;
+                background: #f59e0b;
+                color: #ffffff;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            .afilia-vehicle-mileage-warning-popup-close:hover {
+                background: #d97706;
+                border-color: #d97706;
             }
 
             /* =====================================================
