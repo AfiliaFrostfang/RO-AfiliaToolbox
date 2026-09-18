@@ -18,7 +18,7 @@ Es:
 
 TLDR: Es erweitert nur die lokale AAO-Verwaltung, Fahrzeug-Alarmierung und die Fahrzeugliste.
 
-Dieses Tool benutzt keine Automatisierungswerkzeuge oder andere durch die AGB und Regeln verbotene Funktionen, es erweitert nur die AAO Funktionen durch Kategorieren im Einstellungs und Dispatch Fenster.
+Dieses Tool benutzt keine Automatisierungswerkzeuge oder andere durch die AGB und Regeln verbotene Funktionen, es erweitert das Spiel nur mit nützlichen Funktionen.
 Der Quellcode wird hier immer sichtbar und einsehbar sein und kann jederzeit durch die Administration geprüft und genehmigt oder abgelehnt werden.
 
 # Geplante Features
