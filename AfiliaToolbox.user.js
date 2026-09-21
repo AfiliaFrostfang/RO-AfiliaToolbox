@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.8.0
+// @version      1.8.1
 // @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
@@ -22,7 +22,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.8.0';
+    const SCRIPT_VERSION = '1.8.1';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -70,6 +70,7 @@
     const HOSPITAL_SESSION_URL =
         '/api/gameSession/getSessionData';
     const HOSPITAL_SAVE_DELAY = 1200;
+    const HOSPITAL_DATA_POLL_INTERVAL = 60000;
 
     const DEFAULT_CATEGORIES = [
         {
@@ -90,6 +91,9 @@
     ];
 
     const CHANGELOG = {
+        '1.8.1': [
+            'Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige der Bettenauslastung wird jetzt korrekt aktualisiert, wenn sich die Bettenanzahl ändert. (Fetched alle 60sec die Daten neu.)'
+        ],
         '1.8.0': [
             'Neue Anzeige „Bettenauslastung" in der Statusleiste oben rechts: zeigt belegte und maximale Betten aller Krankenhäuser sowie die Auslastung in Prozent.',
             'Die Auslastung wird automatisch aus den Spieldaten ausgelesen und pro Spiel lokal zwischengespeichert.'
@@ -167,6 +171,7 @@
     let hospitalDataGameID = '';
     let hospitalDataSettlePromise = null;
     let hospitalSaveTimer = null;
+    let hospitalPollTimer = null;
 
     /* =========================================================
        IndexedDB
@@ -3260,6 +3265,32 @@
        Hospital bed status
        ========================================================= */
 
+    function startHospitalDataPolling() {
+        if (hospitalPollTimer) {
+            return;
+        }
+
+        hospitalPollTimer = setInterval(() => {
+            const gameId = resolveGameSessionID();
+
+            if (!gameId) {
+                return;
+            }
+
+            fetch(
+                HOSPITAL_SESSION_URL +
+                    '?gameSessionId=' +
+                    encodeURIComponent(gameId),
+                {
+                    credentials: 'include',
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                }
+            ).catch(() => {});
+        }, HOSPITAL_DATA_POLL_INTERVAL);
+    }
+
     function getHospitalBedSummary() {
         let used = 0;
         let total = 0;
@@ -6060,6 +6091,8 @@
             injectStyles();
 
             installVehicleNetworkHooks();
+
+            startHospitalDataPolling();
 
             discoverAAOs();
 
