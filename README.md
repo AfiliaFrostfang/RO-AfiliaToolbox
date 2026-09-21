@@ -10,6 +10,7 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Erkennt vorhandene AAOs im Spiel automatisch.
 - Sortiert AAOs in eigene Kategorien wie Brandbekämpfung, Technische Hilfe und Rettungsdienst.
 - Ermöglicht das individuelle Verschieben und Sortieren der Kategorien per Drag-and-Drop.
+- AAOs lassen sich innerhalb der Kategorien und der unzugeordneten Liste frei per Drag-and-Drop sortieren.
 - Bietet Suche, Ein-/Ausblenden, Bearbeiten und Löschen von AAOs.
 - Synchronisiert die Ansicht automatisch mit Änderungen im Spiel.
 

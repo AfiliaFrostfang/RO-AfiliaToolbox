@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.8.1
+// @version      1.8.2
 // @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
@@ -22,7 +22,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.8.1';
+    const SCRIPT_VERSION = '1.8.2';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -38,6 +38,8 @@
     const NOTEPAD_SAVE_DELAY = 400;
     const CHANGELOG_STORE_KEY = 'lastSeenVersion';
     const CHANGELOG_POPUP_ID = 'afilia-changelog-popup';
+    const UNCATEGORIZED_ORDER_KEY =
+        'aaoUncategorizedOrder';
 
     const VEHICLE_SORT_CLUSTER_ID = 'afilia-vehicle-sort-cluster';
     const VEHICLE_KM_CLASS = 'afilia-vehicle-km';
@@ -91,6 +93,9 @@
     ];
 
     const CHANGELOG = {
+        '1.8.2': [
+            'AAO-Kategorien: AAOs lassen sich jetzt frei per Drag & Drop sortieren (an der Griffleiste „⋮⋮" ziehen), anstatt zwangsweise alphabetisch sortiert zu werden. Die Reihenfolge gilt auch in der Fahrzeug-Alarmierung und wird gespeichert.'
+        ],
         '1.8.1': [
             'Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige der Bettenauslastung wird jetzt korrekt aktualisiert, wenn sich die Bettenanzahl ändert. (Fetched alle 60sec die Daten neu.)'
         ],
@@ -144,6 +149,8 @@
 
     let dispatchSearchValue = '';
     let draggedCategoryID = null;
+    let draggedAAOKey = null;
+    let uncategorizedAAOOrder = [];
 
     let notepadText = '';
     let notepadSaveTimer = null;
@@ -643,6 +650,14 @@
         }
 
         assignments = await dbGet('assignments') || {};
+
+        uncategorizedAAOOrder = await dbGet(
+            UNCATEGORIZED_ORDER_KEY
+        );
+
+        if (!Array.isArray(uncategorizedAAOOrder)) {
+            uncategorizedAAOOrder = [];
+        }
 
         notepadText = (await dbGet(NOTEPAD_STORE_KEY)) || '';
 
@@ -1225,43 +1240,208 @@
        Dispatch category UI
        ========================================================= */
 
+    function sortAAOs(aaos, order) {
+        const ordering = Array.isArray(order)
+            ? order
+            : [];
+
+        return aaos.slice().sort((left, right) => {
+            const leftIndex =
+                ordering.indexOf(left.key);
+
+            const rightIndex =
+                ordering.indexOf(right.key);
+
+            const leftKnown =
+                leftIndex !== -1;
+
+            const rightKnown =
+                rightIndex !== -1;
+
+            if (leftKnown && rightKnown) {
+                return leftIndex - rightIndex;
+            }
+
+            if (leftKnown) {
+                return -1;
+            }
+
+            if (rightKnown) {
+                return 1;
+            }
+
+            return 0;
+        });
+    }
+
+    function syncAAOOrders() {
+        let changed = false;
+
+        for (const category of categories) {
+            if (!Array.isArray(category.aaoOrder)) {
+                category.aaoOrder = [];
+
+                for (const key of aaoCatalog.keys()) {
+                    if (assignments[key] === category.id) {
+                        category.aaoOrder.push(key);
+                    }
+                }
+
+                changed = true;
+            } else {
+                for (const key of aaoCatalog.keys()) {
+                    if (
+                        assignments[key] ===
+                            category.id &&
+                        !category.aaoOrder.includes(
+                            key
+                        )
+                    ) {
+                        category.aaoOrder.push(key);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (!Array.isArray(uncategorizedAAOOrder)) {
+            uncategorizedAAOOrder = [];
+            changed = true;
+        }
+
+        for (const key of aaoCatalog.keys()) {
+            if (
+                !assignments[key] &&
+                !uncategorizedAAOOrder.includes(
+                    key
+                )
+            ) {
+                uncategorizedAAOOrder.push(key);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    function ensureAAOOrdersSynced() {
+        if (!syncAAOOrders()) {
+            return;
+        }
+
+        saveCategories().catch(console.error);
+        saveUncategorizedAAOOrder()
+            .catch(console.error);
+    }
+
+    async function saveUncategorizedAAOOrder() {
+        await dbSet(
+            UNCATEGORIZED_ORDER_KEY,
+            uncategorizedAAOOrder
+        );
+    }
+
+    async function moveAAOBefore(sourceKey, targetKey) {
+        if (
+            !sourceKey ||
+            !targetKey ||
+            sourceKey === targetKey
+        ) {
+            return;
+        }
+
+        const sourceCategory =
+            getCategoryForAAO(sourceKey);
+
+        const targetCategory =
+            getCategoryForAAO(targetKey);
+
+        const sourceGroup = sourceCategory
+            ? sourceCategory.id
+            : '';
+
+        const targetGroup = targetCategory
+            ? targetCategory.id
+            : '';
+
+        if (sourceGroup !== targetGroup) {
+            return;
+        }
+
+        let order;
+
+        if (sourceGroup) {
+            const category =
+                findCategory(sourceGroup);
+
+            if (!category) {
+                return;
+            }
+
+            if (!Array.isArray(category.aaoOrder)) {
+                category.aaoOrder = [];
+            }
+
+            order = category.aaoOrder;
+        } else {
+            order = uncategorizedAAOOrder;
+        }
+
+        const sourceIndex =
+            order.indexOf(sourceKey);
+
+        if (sourceIndex >= 0) {
+            order.splice(sourceIndex, 1);
+        }
+
+        const adjustedTargetIndex =
+            order.indexOf(targetKey);
+
+        if (adjustedTargetIndex >= 0) {
+            order.splice(
+                adjustedTargetIndex,
+                0,
+                sourceKey
+            );
+        } else {
+            order.push(sourceKey);
+        }
+
+        await Promise.all([
+            saveCategories(),
+            saveUncategorizedAAOOrder()
+        ]);
+
+        renderSettingsPanel();
+        renderDispatchPanel();
+    }
+
     function getAAOsForCategory(categoryID) {
-        return Array.from(
-            aaoCatalog.values()
-        )
-            .filter(aao => {
+        const category =
+            findCategory(categoryID);
+
+        return sortAAOs(
+            Array.from(
+                aaoCatalog.values()
+            ).filter(aao => {
                 return assignments[aao.key] ===
                     categoryID;
-            })
-            .sort((a, b) => {
-                return a.name.localeCompare(
-                    b.name,
-                    'de',
-                    {
-                        sensitivity: 'base'
-                    }
-                );
-            });
+            }),
+            category ? category.aaoOrder : []
+        );
     }
 
     function getUncategorizedAAOs() {
-        return Array.from(
-            aaoCatalog.values()
-        )
-            .filter(aao => {
+        return sortAAOs(
+            Array.from(
+                aaoCatalog.values()
+            ).filter(aao => {
                 return !getCategoryForAAO(
                     aao.key
                 );
-            })
-            .sort((a, b) => {
-                return a.name.localeCompare(
-                    b.name,
-                    'de',
-                    {
-                        sensitivity: 'base'
-                    }
-                );
-            });
+            }),
+            uncategorizedAAOOrder
+        );
     }
 
     function createDispatchAAOElement(aao) {
@@ -1375,6 +1555,8 @@
         if (!list) {
             return;
         }
+
+        ensureAAOOrdersSynced();
 
         let panel =
             dialog.querySelector(
@@ -1512,13 +1694,14 @@
            ----------------------------------------------------- */
 
         const uncategorized =
-            originalCatalog
-                .filter(aao => {
-                    return !getCategoryForAAO(
-                        aao.key
-                    );
-                })
-                .filter(aao => {
+            sortAAOs(
+                originalCatalog.filter(
+                    aao => {
+                        return !getCategoryForAAO(
+                            aao.key
+                        );
+                    }
+                ).filter(aao => {
                     if (!search) {
                         return true;
                     }
@@ -1531,16 +1714,9 @@
                             .toLowerCase()
                             .includes(search)
                     );
-                })
-                .sort((a, b) => {
-                    return a.name.localeCompare(
-                        b.name,
-                        'de',
-                        {
-                            sensitivity: 'base'
-                        }
-                    );
-                });
+                }),
+                uncategorizedAAOOrder
+            );
 
         if (uncategorized.length > 0) {
             const wrapper =
@@ -1660,6 +1836,8 @@
 
         container.style.display =
             'none';
+
+        ensureAAOOrdersSynced();
 
         panel.innerHTML = '';
 
@@ -1905,24 +2083,16 @@
             }
 
             const aaos =
-                Array.from(
-                    aaoCatalog.values()
-                )
-                    .filter(aao => {
+                sortAAOs(
+                    Array.from(
+                        aaoCatalog.values()
+                    ).filter(aao => {
                         return assignments[
                             aao.key
                         ] === category.id;
-                    })
-                    .sort((a, b) => {
-                        return a.name.localeCompare(
-                            b.name,
-                            'de',
-                            {
-                                sensitivity:
-                                    'base'
-                            }
-                        );
-                    });
+                    }),
+                    category.aaoOrder
+                );
 
             for (const aao of aaos) {
                 content.appendChild(
@@ -2123,6 +2293,15 @@
             );
 
         row.innerHTML = `
+            <span
+                class="afilia-aao-drag-handle"
+                draggable="true"
+                title="AAO verschieben"
+                aria-label="AAO verschieben"
+            >
+                ⋮⋮
+            </span>
+
             <div class="afilia-settings-aao-info">
                 <div class="afilia-settings-aao-name">
                     ${escapeHTML(aao.name)}
@@ -2172,6 +2351,112 @@
                 ×
             </button>
         `;
+
+        const dragHandle =
+            row.querySelector(
+                '.afilia-aao-drag-handle'
+            );
+
+        dragHandle.addEventListener(
+            'dragstart',
+            event => {
+                draggedAAOKey = aao.key;
+                row.classList.add(
+                    'afilia-aao-dragging'
+                );
+
+                event.dataTransfer.effectAllowed =
+                    'move';
+                event.dataTransfer.setData(
+                    'text/plain',
+                    aao.key
+                );
+            }
+        );
+
+        dragHandle.addEventListener(
+            'dragend',
+            () => {
+                draggedAAOKey = null;
+
+                document.querySelectorAll(
+                    '.afilia-aao-dragging, .afilia-aao-drop-target'
+                ).forEach(element => {
+                    element.classList.remove(
+                        'afilia-aao-dragging',
+                        'afilia-aao-drop-target'
+                    );
+                });
+            }
+        );
+
+        row.addEventListener(
+            'dragover',
+            event => {
+                if (
+                    !draggedAAOKey ||
+                    draggedAAOKey === aao.key
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect =
+                    'move';
+
+                row.classList.add(
+                    'afilia-aao-drop-target'
+                );
+            }
+        );
+
+        row.addEventListener(
+            'dragleave',
+            event => {
+                if (
+                    event.relatedTarget &&
+                    row.contains(
+                        event.relatedTarget
+                    )
+                ) {
+                    return;
+                }
+
+                row.classList.remove(
+                    'afilia-aao-drop-target'
+                );
+            }
+        );
+
+        row.addEventListener(
+            'drop',
+            async event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                row.classList.remove(
+                    'afilia-aao-drop-target'
+                );
+
+                const sourceKey =
+                    event.dataTransfer.getData(
+                        'text/plain'
+                    ) || draggedAAOKey;
+
+                if (
+                    !sourceKey ||
+                    sourceKey === aao.key
+                ) {
+                    return;
+                }
+
+                await moveAAOBefore(
+                    sourceKey,
+                    aao.key
+                );
+            }
+        );
 
         const select =
             row.querySelector(
@@ -5551,6 +5836,37 @@
 
             .afilia-settings-delete:hover {
                 background: #fee2e2;
+            }
+
+            .afilia-aao-drag-handle {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                width: 20px;
+                height: 28px;
+                color: #9ca3af;
+                cursor: grab;
+                font-size: 16px;
+                letter-spacing: 0;
+                user-select: none;
+            }
+
+            .afilia-aao-drag-handle:hover {
+                color: #4b5563;
+            }
+
+            .afilia-aao-drag-handle:active {
+                cursor: grabbing;
+            }
+
+            .afilia-aao-dragging {
+                opacity: 0.55;
+            }
+
+            .afilia-aao-drop-target {
+                border-color: #ef4444;
+                box-shadow: 0 0 0 2px #fee2e2;
             }
 
             /* =====================================================
