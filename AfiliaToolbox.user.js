@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.8.2
+// @version      1.8.3
 // @description  Afilia Toolbox for Rescue Operator with several Functions.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
@@ -22,7 +22,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.8.2';
+    const SCRIPT_VERSION = '1.8.3';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const PROJECT_URL =
@@ -93,6 +93,9 @@
     ];
 
     const CHANGELOG = {
+        '1.8.3': [
+            'Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige wird jetzt automatisch alle 60 Sekunden aktualisiert, auch ohne das Stations-Panel zu öffnen. (Der Poll ruft jetzt die Stationsdaten statt der Sitzungsdaten ab.)'
+        ],
         '1.8.2': [
             'AAO-Kategorien: AAOs lassen sich jetzt frei per Drag & Drop sortieren (an der Griffleiste „⋮⋮" ziehen), anstatt zwangsweise alphabetisch sortiert zu werden. Die Reihenfolge gilt auch in der Fahrzeug-Alarmierung und wird gespeichert.'
         ],
@@ -3563,7 +3566,7 @@
             }
 
             fetch(
-                HOSPITAL_SESSION_URL +
+                HOSPITAL_STATIONS_URL +
                     '?gameSessionId=' +
                     encodeURIComponent(gameId),
                 {
