@@ -52,7 +52,7 @@ Die Funktionen „Fahrzeugliste" (Kilometerstände) und „Krankenhaus" (Bettena
 
 ## Technischer Aufbau
 
-Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit Cogs bei Discord-Bots):
+Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](https://lss-manager.de) und seinem Modul Store):
 
 | Datei | Rolle |
 | --- | --- |
