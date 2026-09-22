@@ -30,10 +30,6 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Zeigt die Bettenauslastung aller Krankenhäuser als Statusanzeige oben rechts an (belegte/maximale Betten inkl. Auslastung in Prozent).
 - Die Auslastung wird automatisch aus den Spieldaten gelesen und pro Spiel lokal zwischengespeichert.
 
-### Krankenhaus
-- Zeigt die Bettenauslastung aller Krankenhäuser als Statusanzeige oben rechts an (belegte/maximale Betten inkl. Auslastung in Prozent).
-- Die Auslastung wird automatisch aus den Spieldaten gelesen und pro Spiel lokal zwischengespeichert.
-
 ### Notizblock
 - Fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
 - Speichert Notizen automatisch lokal.
