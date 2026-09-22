@@ -6,6 +6,12 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 
 ## Funktionen
 
+### Applet Store
+- Alle Funktionen der Toolbox sind als einzelne „Applets" umgesetzt.
+- Über den Puzzle-Knopf in der Schnellzugriffsleiste lässt sich der Applet Store öffnen.
+- Dort kann jede Funktion einzeln aktiviert oder deaktiviert werden – Änderungen werden sofort übernommen.
+- Die Aktivierung wird lokal gespeichert und beim nächsten Laden übernommen.
+
 ### AAO-Verwaltung
 - Erkennt vorhandene AAOs im Spiel automatisch.
 - Sortiert AAOs in eigene Kategorien wie Brandbekämpfung, Technische Hilfe und Rettungsdienst.
@@ -44,7 +50,18 @@ Der Quellcode ist hier jederzeit einsehbar und kann von der Administration gepr�
 
 Die Funktionen „Fahrzeugliste" (Kilometerstände) und „Krankenhaus" (Bettenauslastung) sind vorerst deaktiviert und werden erst nach Veröffentlichung der öffentlichen API wieder eingebaut.
 
+## Technischer Aufbau
+
+Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit Cogs bei Discord-Bots):
+
+| Datei | Rolle |
+| --- | --- |
+| `AfiliaToolbox.user.js` | Kern: Applet-Registry, Applet Store, Update-Check und Changelog. Lädt die Applets per `@require`. |
+| `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
+| `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
+
+Jedes Applet registriert sich selbst in der globalen Warteschlange (`window.__AFILIA_APPLET_QUEUE__`) und stellt `init`, `onScan` und `dispose` bereit. Neue Applets können als neue Datei unter `applets/` hinzugefügt und im Kern per `@require` eingebunden werden.
+
 ## Geplante Features
 
 - UI-Overhaul für diverse Fenster.
-- „Applet Store", um die Toolbox und ihre Funktionen zu personalisieren.
