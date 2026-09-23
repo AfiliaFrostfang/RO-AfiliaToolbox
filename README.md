@@ -60,8 +60,6 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 
-Jedes Applet registriert sich selbst in der globalen Warteschlange (`window.__AFILIA_APPLET_QUEUE__`) und stellt `init`, `onScan` und `dispose` bereit. Neue Applets können als neue Datei unter `applets/` hinzugefügt und im Kern per `@require` eingebunden werden.
-
 ## Geplante Features
 
 - UI-Overhaul für diverse Fenster.
