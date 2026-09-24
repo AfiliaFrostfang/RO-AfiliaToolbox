@@ -577,9 +577,9 @@
         }) || null;
     }
 
-    function findDispatchList(dialog) {
+    function findDispatchLists(dialog) {
         if (!dialog) {
-            return null;
+            return [];
         }
 
         const searchInput = dialog.querySelector(
@@ -587,22 +587,32 @@
         );
 
         if (!searchInput) {
-            return null;
+            return [];
         }
 
-        const candidates = Array.from(
+        return Array.from(
             dialog.querySelectorAll('div.space-y-2')
-        );
+        ).filter(container => {
+            return getDispatchCards(container).length > 0;
+        });
+    }
 
-        for (const candidate of candidates) {
-            const cards = getDispatchCards(candidate);
+    function findDispatchList(dialog) {
+        return findDispatchLists(dialog)[0] || null;
+    }
 
-            if (cards.length > 0) {
-                return candidate;
-            }
+    function hasAAOCards(dialog) {
+        if (!dialog) {
+            return false;
         }
 
-        return null;
+        return findDispatchLists(dialog).some(container => {
+            return getDispatchCards(container).some(card => {
+                return !!card.querySelector(
+                    'div.font-semibold.text-sm.text-gray-900'
+                );
+            });
+        });
     }
 
     function isDispatchAAOModeEnabled(dialog) {
@@ -610,42 +620,88 @@
             return false;
         }
 
+        /* -----------------------------------------------------
+           „Nach Wachen sortieren": Jede Karte ist ein Fahrzeug
+           und wird per Drag-and-Drop alarmiert. In diesem Modus
+           gibt es keine AAO-Kategorien.
+           ----------------------------------------------------- */
+
         if (dialog.querySelector('[data-drag-vehicle-id]')) {
             return false;
         }
 
-        const modeControl = Array.from(
+        const controls = Array.from(
             dialog.querySelectorAll(
                 'button, [role="button"], [role="switch"], input[type="checkbox"]'
             )
-        ).find(control => {
-            const label = (
-                control.getAttribute('aria-label') ||
-                control.getAttribute('title') ||
-                control.textContent
-            )
-                .replace(/\s+/g, ' ')
-                .trim()
-                .toLowerCase();
+        );
 
-            return label === 'aao modus' ||
-                label === 'aao mode' ||
-                label.includes('aao-modus');
-        });
+        const getLabel = control => (
+            control.getAttribute('aria-label') ||
+            control.getAttribute('title') ||
+            control.textContent ||
+            ''
+        )
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
 
-        if (!modeControl) {
-            return true;
+        const isAAOModeLabel = label =>
+            /\baao[\s-]?modus\b|\baao[\s-]?mode\b/i.test(label);
+
+        const isWatchSortLabel = label =>
+            /\bnach[\s-]wachen?(?:[\s-]sortieren)?\b|\bwachen?[\s-]sortieren\b|\bsort(?:ed)?\s*by\s+(?:station|watch)\b/i.test(label);
+
+        const isOff = control => {
+            const state = control.getAttribute('data-state');
+            const pressed = control.getAttribute('aria-pressed');
+            const checked = control.getAttribute('aria-checked');
+
+            return state === 'off' ||
+                state === 'unchecked' ||
+                pressed === 'false' ||
+                checked === 'false' ||
+                ('checked' in control && !control.checked);
+        };
+
+        const isOn = control => {
+            if (isOff(control)) {
+                return false;
+            }
+
+            const state = control.getAttribute('data-state');
+            const pressed = control.getAttribute('aria-pressed');
+            const checked = control.getAttribute('aria-checked');
+
+            return state === 'on' ||
+                state === 'checked' ||
+                pressed === 'true' ||
+                checked === 'true' ||
+                ('checked' in control && control.checked);
+        };
+
+        /* „Nach Wachen sortieren" ist explizit aktiviert -> AAO-Modus aus. */
+        for (const control of controls) {
+            if (
+                isWatchSortLabel(getLabel(control)) &&
+                isOn(control)
+            ) {
+                return false;
+            }
         }
 
-        const state = modeControl.getAttribute('data-state');
-        const pressed = modeControl.getAttribute('aria-pressed');
-        const checked = modeControl.getAttribute('aria-checked');
+        /* AAO-Modus-Umschalter vorhanden? */
+        const aaoControl = controls.find(control => {
+            return isAAOModeLabel(getLabel(control));
+        });
 
-        return state !== 'off' &&
-            state !== 'unchecked' &&
-            pressed !== 'false' &&
-            checked !== 'false' &&
-            (!('checked' in modeControl) || modeControl.checked);
+        if (aaoControl) {
+            return !isOff(aaoControl);
+        }
+
+        /* Kein eindeutiger Umschalter gefunden: Nur wenn die sichtbaren
+           Karten tatsächlich AAO-Karten sind, AAO-Modus annehmen. */
+        return hasAAOCards(dialog);
     }
 
     function removeDispatchPanel(dialog, list) {
@@ -655,6 +711,10 @@
 
         if (panel) {
             panel.remove();
+        }
+
+        for (const candidate of findDispatchLists(dialog)) {
+            candidate.style.display = '';
         }
 
         if (list) {
@@ -768,7 +828,7 @@
 
         const dispatchDialog = findDispatchDialog();
 
-        if (dispatchDialog) {
+        if (dispatchDialog && isDispatchAAOModeEnabled(dispatchDialog)) {
             const list = findDispatchList(dispatchDialog);
 
             if (list) {
@@ -2091,26 +2151,35 @@
         if (dispatchDialog) {
             hookDispatchSearch(dispatchDialog);
 
+            if (!isDispatchAAOModeEnabled(dispatchDialog)) {
+                removeDispatchPanel(
+                    dispatchDialog,
+                    findDispatchList(dispatchDialog)
+                );
+
+                lastDispatchContainer = dispatchDialog;
+
+                return;
+            }
+
             const list = findDispatchList(dispatchDialog);
 
-            if (list) {
-                if (!isDispatchAAOModeEnabled(dispatchDialog)) {
-                    removeDispatchPanel(dispatchDialog, list);
+            if (!list) {
+                return;
+            }
 
-                    lastDispatchContainer = dispatchDialog;
-                } else if (
-                    dispatchDialog !== lastDispatchContainer ||
-                    !document.querySelector(
-                        `#${AAO_DISPATCH_PANEL_ID}`
-                    ) ||
-                    catalogChanged
-                ) {
-                    lastDispatchContainer = dispatchDialog;
+            if (
+                dispatchDialog !== lastDispatchContainer ||
+                !document.querySelector(
+                    `#${AAO_DISPATCH_PANEL_ID}`
+                ) ||
+                catalogChanged
+            ) {
+                lastDispatchContainer = dispatchDialog;
 
-                    renderDispatchPanel();
-                } else {
-                    updateAllDispatchItems();
-                }
+                renderDispatchPanel();
+            } else {
+                updateAllDispatchItems();
             }
         } else {
             if (lastDispatchContainer) {
