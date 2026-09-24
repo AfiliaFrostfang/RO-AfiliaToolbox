@@ -1321,6 +1321,15 @@
             return;
         }
 
+        if (!isDispatchAAOModeEnabled(dialog)) {
+            removeDispatchPanel(
+                dialog,
+                findDispatchList(dialog)
+            );
+
+            return;
+        }
+
         const list = findDispatchList(dialog);
 
         if (!list) {
@@ -2239,7 +2248,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.0',
+        version: '1.0.1',
         init,
         onScan,
         dispose
