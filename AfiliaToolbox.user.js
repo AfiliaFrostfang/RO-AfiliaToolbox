@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.10.0
+// @version      1.10.1
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
 // @match        https://game.rescue-operator.com/*
 // @updateURL    https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
 // @downloadURL  https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
-// @require      https://afiliafrostfang.github.io/RO-AfiliaToolbox/applets/aaoCategories.js
-// @require      https://afiliafrostfang.github.io/RO-AfiliaToolbox/applets/notepad.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -24,9 +22,13 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.10.0';
+    const SCRIPT_VERSION = '1.10.1';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
+    const APPLET_MANIFEST_URL =
+        'https://afiliafrostfang.github.io/RO-AfiliaToolbox/applets/manifest.json';
+    const APPLETS_BASE_URL =
+        'https://afiliafrostfang.github.io/RO-AfiliaToolbox/';
     const PROJECT_URL =
         'https://github.com/AfiliaFrostfang/RO-AfiliaToolbox';
 
@@ -38,6 +40,9 @@
     const STORE_BUTTON_CLASS = 'afilia-store-button';
 
     const CHANGELOG = {
+        '1.10.1': [
+            'Technik: Applets werden jetzt über ein Manifest geladen. Applet-Updates erscheinen automatisch, ohne dass die Toolbox selbst aktualisiert werden muss.'
+        ],
         '1.10.0': [
             'NEU: Applet Store – Über den neuen Knopf in der Schnellzugriffsleiste kannst du selbst wählen, welche Funktionen der Toolbox aktiv sind.',
             'Technik: Die Funktionen sind jetzt in eigene Module (Applets) aufgeteilt und können einzeln aktiviert oder deaktiviert werden. Genau wie bei Cogs eines Discord-Bots.'
@@ -269,6 +274,80 @@
         }
 
         window.__AFILIA_APPLET_QUEUE__ = [];
+    }
+
+    /* =========================================================
+       Runtime applet loading
+       ========================================================= */
+
+    async function fetchNoStore(url) {
+        const response = await fetch(url, {
+            cache: 'no-store'
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                `HTTP ${response.status} for ${url}`
+            );
+        }
+
+        return response;
+    }
+
+    async function loadRuntimeApplet(entry) {
+        const url =
+            `${APPLETS_BASE_URL}${entry.file}?v=${encodeURIComponent(entry.version)}`;
+
+        const response = await fetchNoStore(url);
+
+        const source = await response.text();
+
+        const execute = new Function(
+            `${source}\n//# sourceURL=${entry.file}`
+        );
+
+        execute();
+    }
+
+    async function loadRuntimeApplets() {
+        let manifest;
+
+        try {
+            const response = await fetchNoStore(APPLET_MANIFEST_URL);
+
+            manifest = await response.json();
+        } catch (error) {
+            console.error(
+                '[Afilia Toolbox] Failed to fetch applet manifest:',
+                error
+            );
+
+            return;
+        }
+
+        const entries = Object.entries(manifest || {});
+
+        const results = await Promise.allSettled(
+            entries.map(async ([id, entry]) => {
+                try {
+                    await loadRuntimeApplet(entry);
+
+                    return { id, ok: true };
+                } catch (error) {
+                    return { id, ok: false, error };
+                }
+            })
+        );
+
+        for (const result of results) {
+            if (!result.ok) {
+                console.error(
+                    '[Afilia Toolbox] Failed to load applet:',
+                    result.value.id,
+                    result.value.error
+                );
+            }
+        }
     }
 
     /* =========================================================
@@ -1263,9 +1342,11 @@
 
             injectStyles();
 
-            collectQueuedApplets();
-
             await loadAppletStates();
+
+            await loadRuntimeApplets();
+
+            collectQueuedApplets();
 
             await initEnabledApplets();
 

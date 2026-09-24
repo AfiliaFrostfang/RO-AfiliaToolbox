@@ -1,0 +1,10 @@
+{
+    "aaoCategories": {
+        "file": "applets/aaoCategories.js",
+        "version": "1.0.1"
+    },
+    "notepad": {
+        "file": "applets/notepad.js",
+        "version": "1.0.0"
+    }
+}

@@ -56,9 +56,12 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 
 | Datei | Rolle |
 | --- | --- |
-| `AfiliaToolbox.user.js` | Kern: Applet-Registry, Applet Store, Update-Check und Changelog. Lädt die Applets per `@require`. |
+| `AfiliaToolbox.user.js` | Kern: Applet-Registry, Applet Store, Update-Check, Changelog und der Applet-Loader. |
+| `applets/manifest.json` | Manifest: Liste aller Applets inkl. Datei und Version. Wird zum Start vom Kern geladen. |
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
+
+Die Applets werden nicht per `@require` eingebunden, sondern zur Laufzeit vom Kern geladen: Das Manifest wird mit `cache: 'no-store'` abgerufen, anschließend jede Applet-Datei mit ihrer Version als Cache-Buster (`applets/aaoCategories.js?v=1.0.1`). Dadurch erscheinen Applet-Updates automatisch, ohne dass die Toolbox selbst aktualisiert werden muss.
 
 ## Geplante Features
 
