@@ -562,7 +562,7 @@
 
     window.__AFILIA_APPLET_QUEUE__.push({
         id: 'fmsAlert',
-        name: 'FMS-Alarm',
+        name: 'FMS-5-Alarm',
         description:
             'Spielt alle 5 Minuten einen Alarmton ab, solange ein Sprechwunsch vorliegt.',
         version: '1.0.0',
