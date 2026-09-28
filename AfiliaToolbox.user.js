@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.10.1
+// @version      1.10.2
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
+// @discord      https://discord.gg/h6HEjwaMpW
 // @match        https://game.rescue-operator.com/*
 // @updateURL    https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
 // @downloadURL  https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
@@ -22,7 +23,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.10.1';
+    const SCRIPT_VERSION = '1.10.2';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
@@ -40,6 +41,9 @@
     const STORE_BUTTON_CLASS = 'afilia-store-button';
 
     const CHANGELOG = {
+        '1.10.2': [
+            'Ergänzung der Header Informationen im Kernskript.'
+        ],
         '1.10.1': [
             'Technik: Applets werden jetzt über ein Manifest geladen. Applet-Updates erscheinen automatisch, ohne dass die Toolbox selbst aktualisiert werden muss.'
         ],
