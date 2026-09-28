@@ -23,6 +23,12 @@
     const WATCH_INTERVAL = 1000;
     const MUTED_STORE_KEY = 'fmsAlertMuted';
 
+    /* Der Global-Mute-Schalter der Seite ist an diesem Icon zu erkennen.
+       Unsere eigene Anzeige nutzt abweichend 'text-sm sm:text-sm' und wird
+       über den Button-Kontext ohnehin ausgeschlossen. */
+    const GLOBAL_MUTE_ICON_CLASS = 'fa-volume-xmark';
+    const GLOBAL_MUTE_ICON_COLOR_CLASS = 'text-white/80';
+
     const BUTTON_CLASS = 'afilia-fms-alert-button';
     const BUTTON_ACTIVE_CLASS = 'afilia-fms-alert-button-active';
     const STYLES_ID = 'afilia-applet-fms-alert-styles';
@@ -38,6 +44,7 @@
     let isActive = false;
     let isMuted = false;
     let isBlocked = false;
+    let isGlobalMute = false;
 
     /* =========================================================
        Styles
@@ -132,6 +139,28 @@
         );
     }
 
+    function detectGlobalMute() {
+        const icons = document.querySelectorAll(
+            `i.${GLOBAL_MUTE_ICON_CLASS}`
+        );
+
+        for (const icon of icons) {
+            /* Unser eigenes Icon darf nicht mitgezählt werden. */
+            if (icon.closest(`.${BUTTON_CLASS}`)) {
+                continue;
+            }
+
+            if (
+                icon.classList.contains(GLOBAL_MUTE_ICON_COLOR_CLASS) &&
+                isElementVisible(icon)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /* =========================================================
        Audio
        ========================================================= */
@@ -153,7 +182,7 @@
     }
 
     function playAlert() {
-        if (!audio || isMuted) {
+        if (!audio || isMuted || isGlobalMute) {
             return;
         }
 
@@ -219,7 +248,7 @@
     function scheduleRepeat() {
         stopRepeat();
 
-        if (!isActive) {
+        if (!isActive || isGlobalMute) {
             return;
         }
 
@@ -265,7 +294,39 @@
             return;
         }
 
-        setActive(isBadgeActive());
+        const globalMuteChanged = syncGlobalMute();
+
+        const active = isBadgeActive();
+
+        setActive(active);
+
+        if (globalMuteChanged && active && !isGlobalMute) {
+            playAlert();
+
+            scheduleRepeat();
+        }
+    }
+
+    /* Liefert true, sobald sich der Global-Mute-Zustand geändert hat. */
+
+    function syncGlobalMute() {
+        const muted = detectGlobalMute();
+
+        if (muted === isGlobalMute) {
+            return false;
+        }
+
+        isGlobalMute = muted;
+
+        if (isGlobalMute) {
+            stopRepeat();
+
+            stopAudio();
+        }
+
+        updateButton();
+
+        return true;
     }
 
     function startWatch() {
@@ -364,7 +425,7 @@
             return;
         }
 
-        if (isMuted) {
+        if (isMuted || isGlobalMute) {
             isBlocked = false;
 
             updateButton();
@@ -431,7 +492,7 @@
         const icon = button.querySelector('i');
 
         if (icon) {
-            const iconClass = isBlocked
+            const iconClass = isBlocked || isGlobalMute
                 ? 'fa-solid fa-volume-xmark text-sm sm:text-sm'
                 : 'fa-solid fa-bell text-sm sm:text-sm';
 
@@ -453,9 +514,11 @@
             'title',
             isBlocked
                 ? 'Ton freigeben – Klicken, damit der FMS-Alarm wiedergegeben werden darf'
-                : isMuted
-                    ? 'FMS-Alarm stummgeschaltet – Klicken zum Anmelden'
-                    : 'FMS-Alarm aktiv – alle 5 Minuten, solange eine Meldung anliegt'
+                : isGlobalMute
+                    ? 'Global stummgeschaltet – FMS-Alarm bleibt ohne Ton'
+                    : isMuted
+                        ? 'FMS-Alarm stummgeschaltet – Klicken zum Anmelden'
+                        : 'FMS-Alarm aktiv – alle 5 Minuten, solange eine Meldung anliegt'
         );
     }
 
@@ -553,6 +616,7 @@
 
         isActive = false;
         isBlocked = false;
+        isGlobalMute = false;
         lastButtonRail = null;
         api = null;
     }
