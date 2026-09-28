@@ -1,4 +1,4 @@
-# RO-Afilia Toolbox
+# RO-Afilia Toolbox [![Discord](https://img.shields.io/discord/1554176132012580894?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/h6HEjwaMpW)
 
 Ein Quality-of-Life-Userscript für [Rescue Operator](https://game.rescue-operator.com/), das die AAO-Verwaltung und das Alarmierungsfenster übersichtlicher macht.
 
