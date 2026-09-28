@@ -629,7 +629,7 @@
         name: 'FMS-5-Alarm',
         description:
             'Spielt alle 5 Minuten einen Alarmton ab, solange ein Sprechwunsch vorliegt.',
-        version: '1.0.0',
+        version: '1.0.1',
         init,
         onScan,
         dispose
