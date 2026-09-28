@@ -6,5 +6,9 @@
     "notepad": {
         "file": "applets/notepad.js",
         "version": "1.0.0"
+    },
+    "fmsAlert": {
+        "file": "applets/fmsAlert.js",
+        "version": "1.0.0"
     }
 }
