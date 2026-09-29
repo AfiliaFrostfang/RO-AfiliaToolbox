@@ -57,7 +57,7 @@
     "applets": {
         "aaoCategories": {
             "1.0.3": [
-                "Das Spiel hat die Liste der AAOs in den Einstellungen umgebaut. Die Toolbox hat die alte Struktur gesucht und deshalb keine AAOs mehr gefunden: Die Kategorien wurden zwar angezeigt, ließen sich aber weder zuordnen noch bearbeiten. Die Toolbox passt sich der neuen Liste an und übernimmt deren Suchfeld. Bereits gespeicherte Zuordnungen bleiben erhalten, auch wenn sich die Liste des Spiels gerade nicht auslesen lässt."
+                "Das native AAO Fenster in den Einstellungen wurde umgebaut. Das Applet hat die alte Struktur gesucht und deshalb keine AAOs mehr gefunden: Die Kategorien wurden zwar angezeigt, ließen sich aber weder zuordnen noch bearbeiten. Das Applet passt sich der neuen Liste an und übernimmt deren Suchfeld. Bereits gespeicherte Zuordnungen bleiben erhalten, auch wenn sich die Class der Liste des Spiels gerade nicht auslesen lässt."
             ],
             "1.0.2":[
                 "Unter bestimmten Umständen konnte es vorkommen, dass die AAO-Kategorien nicht korrekt geladen wurden. Zum Beispiel in einem neuen Spiel, in dem noch keine AAOs gespeichert waren."
