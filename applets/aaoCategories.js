@@ -539,6 +539,30 @@
        AAO discovery
        ========================================================= */
 
+    /* -----------------------------------------------------
+       Eine AAO-Zeile wird an ihren Bestandteilen erkannt, nicht
+       am Ziehgriff.
+
+       Das Spiel rendert bei einer einzigen AAO eine schlichte
+       Zeile: kein „data-slot", keine id, kein Griff. Erst ab
+       zwei AAOs erscheint die sortierbare Zeile mit dem Griff
+       „AAO verschieben". Eine Erkennung am Griff sieht deshalb
+       bei genau einer AAO keine Liste – und räumt dann den
+       Katalog, als gäbe es keine AAO.
+
+       In beiden Gestaltungen vorhanden sind dagegen der Name
+       („span.font-semibold"), die Kurzbeschreibung
+       („span.font-mono") sowie die beiden Aktionen: ein Stift
+       („button[data-slot=button]") und der Löschdialog
+       („button[data-slot=alert-dialog-trigger]"). Das
+       Formular „Neue AAO" hat keine dieser Aktionen und wird
+       deshalb nicht als Zeile gelesen.
+       ----------------------------------------------------- */
+
+    const SETTINGS_ROW_EDIT_SELECTOR = 'button[data-slot="button"]';
+    const SETTINGS_ROW_DELETE_SELECTOR =
+        'button[data-slot="alert-dialog-trigger"]';
+
     function getAAOContainers() {
         return Array.from(
             document.querySelectorAll(
@@ -547,20 +571,49 @@
         );
     }
 
-    function isSettingsAAOContainer(container) {
-        if (!container) {
+    function isAAORow(element) {
+        if (!element || !element.matches('div')) {
             return false;
         }
 
-        return !!container.querySelector(
-            '[data-slot="sortable-item-handle"][title="AAO verschieben"]'
+        if (element.querySelector(`#${AAO_SETTINGS_PANEL_ID}`)) {
+            return false;
+        }
+
+        if (!element.querySelector('span.font-semibold')) {
+            return false;
+        }
+
+        if (!element.querySelector('span.font-mono')) {
+            return false;
+        }
+
+        if (!element.querySelector(SETTINGS_ROW_EDIT_SELECTOR)) {
+            return false;
+        }
+
+        return !!element.querySelector(
+            SETTINGS_ROW_DELETE_SELECTOR
         );
     }
 
+    function getAAORows(container) {
+        if (!container) {
+            return [];
+        }
+
+        return Array.from(container.children).filter(isAAORow);
+    }
+
+    /* Der Container ist derjenige, der mindestens eine echte
+       Zeile traegt. Ist keine Liste gerendert, bleibt das null –
+       das bedeutet aber ausdruecklich nicht, dass es keine
+       AAOs gibt. */
+
     function findSettingsAAOContainer() {
-        return getAAOContainers().find(
-            isSettingsAAOContainer
-        ) || null;
+        return getAAOContainers().find(container => {
+            return getAAORows(container).length > 0;
+        }) || null;
     }
 
     function findSettingsDialog() {
@@ -806,11 +859,7 @@
         if (settingsContainer) {
             const seenSettingsKeys = new Set();
 
-            const rows = Array.from(
-                settingsContainer.querySelectorAll(
-                    ':scope > [data-slot="sortable-item"]'
-                )
-            );
+            const rows = getAAORows(settingsContainer);
 
             for (const row of rows) {
                 const nameElement = row.querySelector(
@@ -859,6 +908,15 @@
                 }
             }
 
+            /* -----------------------------------------------------
+               Eintraege entfernen, die nicht mehr in der Liste
+               stehen. Die Zuordnung bleibt erhalten: sie ist der
+               Wunsch des Spielers und nicht ableitbar aus dem,
+               was das Spiel gerade anzeigt. Waere die Liste
+               wegen einer Suche nur teilweise gefuellt, ginge
+               sonst die Zuordnung einer gesuchten AAO verloren.
+               ----------------------------------------------------- */
+
             for (const [key, aao] of aaoCatalog) {
                 if (
                     aao.source === 'settings' &&
@@ -868,36 +926,24 @@
                     originalAAORows.delete(key);
                     selectedAAOs.delete(key);
 
-                    if (assignments[key]) {
-                        delete assignments[key];
-
-                        saveAssignments().catch(console.error);
-                    }
-
                     changed = true;
                 }
             }
-        } else {
-            /* -----------------------------------------------------
-               Es ist keine AAO angelegt, die native Liste fehlt
-               also komplett. Katalogeintraege verwerfen, damit
-               keine veralteten AAOs angezeigt werden. Die
-               Zuordnungen bleiben erhalten, damit sie nach dem
-               Anlegen der ersten AAO wieder greifen.
-               ----------------------------------------------------- */
-
-            for (const [key, aao] of aaoCatalog) {
-                if (aao.source !== 'settings') {
-                    continue;
-                }
-
-                aaoCatalog.delete(key);
-                originalAAORows.delete(key);
-                selectedAAOs.delete(key);
-
-                changed = true;
-            }
         }
+
+        /* -----------------------------------------------------
+           Kein Container gefunden heisst nicht, dass es keine
+           AAO gibt: der Dialog kann geschlossen sein, ein
+           anderer Reiter kann den Inhalt abgebaut haben, oder das
+           Spiel baut die Liste gerade neu auf. Der Katalog
+           bleibt deshalb unangetastet. Vorher wurde er hier
+           geleert, und beim Wechsel auf eine einzige AAO – wo
+           das Spiel eine Zeile ohne data-slot rendert – riss das
+           jede Zuordnung mit.
+
+           Eine wirklich geloeschte AAO verschwindet beim
+           naechsten Lesen der Liste von selbst aus dem Katalog.
+           ----------------------------------------------------- */
 
         /* -----------------------------------------------------
            Dispatch AAOs
