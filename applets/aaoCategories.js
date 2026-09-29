@@ -12,6 +12,22 @@
     const UNCATEGORIZED_ORDER_KEY = 'aaoUncategorizedOrder';
     const STYLES_ID = 'afilia-applet-aao-styles';
 
+    /* -----------------------------------------------------
+       Anker der nativen AAO-Liste. Der Button existiert
+       immer, auch in einem neuen Spiel ohne jede AAO, und
+       steht im selben Container wie Suchfeld und Zeilen.
+       Ohne diesen Anker griff die Suche nach dem ersten
+       „div.space-y-2" mit einer fett gedruckten Beschriftung
+       – das Formular „Neue AAO anlegen" erfuellt diese
+       Bedingung ebenso und steht weiter oben im Dokument.
+       Dadurch wurde die echte Liste ueberschrieben, ihre
+       Zeilen geloescht und der Katalog auf die Formularfelder
+       reduziert: neu angelegte AAOs verschwanden sofort.
+       ----------------------------------------------------- */
+
+    const SETTINGS_CREATE_BUTTON_LABEL = 'Neue AAO anlegen';
+    const SETTINGS_SECTION_HEADING = 'Alarm- und Ausrückeordnung';
+
     const DEFAULT_CATEGORIES = [
         {
             id: 'fire',
@@ -44,6 +60,7 @@
 
     let dispatchSearchValue = '';
     let settingsSearchValue = '';
+    let hookedSettingsSearchInput = null;
     let draggedCategoryID = null;
     let draggedAAOKey = null;
     let uncategorizedAAOOrder = [];
@@ -559,12 +576,32 @@
         return row.querySelector('span.font-semibold');
     }
 
+    /* -----------------------------------------------------
+       Eine Zeile ist rein anzeigend: sie enthaelt Name,
+       Kurzbeschreibung sowie die Buttons zum Bearbeiten und
+       Loeschen, aber kein Eingabefeld. Das Formular
+       „Neue AAO anlegen" besteht dagegen aus Beschriftungen
+       mit eigenen Eingabefeldern und darf nicht als Zeile
+       missverstanden werden – sonst verschwinden die echten
+       AAOs aus dem Katalog.
+       ----------------------------------------------------- */
+
+    function containsFormControl(element) {
+        return !!element.querySelector(
+            'form, input, textarea, select'
+        );
+    }
+
     function isSettingsAAORow(element) {
         if (!element || !element.matches('div')) {
             return false;
         }
 
         if (element.querySelector(`#${AAO_SETTINGS_PANEL_ID}`)) {
+            return false;
+        }
+
+        if (containsFormControl(element)) {
             return false;
         }
 
@@ -581,6 +618,54 @@
         );
     }
 
+    function findSettingsAAOCreateButton(root) {
+        if (!root) {
+            return null;
+        }
+
+        return Array.from(root.querySelectorAll('button')).find(
+            button => {
+                return button.textContent.trim() ===
+                    SETTINGS_CREATE_BUTTON_LABEL;
+            }
+        ) || null;
+    }
+
+    /* -----------------------------------------------------
+       Der Container wird ueber den Button „Neue AAO anlegen"
+       bestimmt. Von dessen Vorfahren werden alle Kandidaten der
+       Klasse „div.space-y-2" innerhalb des Abschnitts
+       gesammelt und von aussen nach innen geprueft: der
+       zuerst gefundene, der die AAO-Zeilen traegt, ist die
+       Liste. Bleibt das Ergebnis leer, gewinnt der innerste
+       Kandidat, damit die Liste auch in einem Spiel ohne jede
+       AAO stabil erkannt wird.
+
+       Der Button ist der einzige Knoten der Liste, der immer
+       vorhanden ist, und grenzt das Formular zum Anlegen sowie
+       alle anderen Beschriftungen des Abschnitts aus. Genau
+       dort lag der Fehler: die Suche nach dem ersten
+       „div.space-y-2" mit einer fett gedruckten Beschriftung
+       traf auch das Formular und vernichtete die Mitschrift
+       der echten Liste.
+       ----------------------------------------------------- */
+
+    function getSettingsAAOContainerCandidates(section, button) {
+        const candidates = [];
+
+        let candidate = button.parentElement;
+
+        while (candidate && candidate !== section) {
+            if (candidate.matches('div.space-y-2')) {
+                candidates.unshift(candidate);
+            }
+
+            candidate = candidate.parentElement;
+        }
+
+        return candidates;
+    }
+
     function findSettingsAAOContainer() {
         const dialog = findSettingsDialog();
 
@@ -589,22 +674,69 @@
         }
 
         const section = findSettingsAAOSection() || dialog;
+        const button = findSettingsAAOCreateButton(section);
 
-        return Array.from(
-            section.querySelectorAll('div.space-y-2')
-        ).find(candidate => {
-            return getSettingsAAORows(candidate).length > 0;
-        }) || null;
-    }
-
-    function findSettingsSearchInput() {
-        const section = findSettingsAAOSection();
-
-        if (!section) {
+        if (!button) {
             return null;
         }
 
-        return section.querySelector('input') || null;
+        const candidates = getSettingsAAOContainerCandidates(
+            section,
+            button
+        );
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        return candidates.find(candidate => {
+            return getSettingsAAORows(candidate).length > 0;
+        }) || candidates[candidates.length - 1];
+    }
+
+    function findSettingsSearchInput() {
+        const container = findSettingsAAOContainer();
+
+        if (!container) {
+            return null;
+        }
+
+        /* -----------------------------------------------------
+           Nur Eingabefelder der Liste selbst. Das erste Feld im
+           Abschnitt gehoerte vor dem Fix unter Umstaenden zum
+           Formular „Neue AAO anlegen" – der eingegebene Name
+           wuerde dann als Suchbegriff gelten und die
+           Mitschrift auf einen einzigen Treffer filtern.
+           ----------------------------------------------------- */
+
+        const candidates = Array.from(
+            container.querySelectorAll('input')
+        ).filter(input => {
+            if (input.type === 'hidden') {
+                return false;
+            }
+
+            return !input.closest('form');
+        });
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        /* Ein Suchfeld ist bevorzugt, weil es zuerst gefunden
+           wird. Fehlt der Hinweis, greift die Reihenfolge. */
+
+        return candidates.find(input => {
+            const hint = [
+                input.type,
+                input.placeholder,
+                input.name,
+                input.id,
+                input.getAttribute('aria-label')
+            ].join(' ').toLowerCase();
+
+            return /search|such|filter|find/.test(hint);
+        }) || candidates[0];
     }
 
     /* -----------------------------------------------------
@@ -672,7 +804,7 @@
             dialog.querySelectorAll('h3')
         ).find(h3 => {
             return h3.textContent.trim() ===
-                'Alarm- und Ausrückeordnung';
+                SETTINGS_SECTION_HEADING;
         });
 
         if (!heading) {
@@ -975,16 +1107,24 @@
                Katalogeintraege entfernen, die nicht mehr in der
                nativen Liste stehen.
 
+               Geraedet wird nur, wenn die Liste am Button
+               „Neue AAO anlegen" festgemacht wurde und
+               nachweislich auslesbar ist: entweder stehen Zeilen
+               darin oder das Suchfeld ist vorhanden. Trifft
+               beides nicht zu, laesst sich ein leerer Abschnitt
+               nicht von einem Lesefehler unterscheiden – dann
+               waere das Entfernen ein Fehlalarm und wuerde die
+               gesamte Mitschrift loeschen.
+
                Waehrend einer Suche zeigt das Spiel nur einen
                Teil der AAOs, dann darf nichts entfernt werden.
-               Zuordnungen werden grundsaetzlich nie geloescht:
-               Laesst sich die Liste nicht auslesen, waere das
-               ein Fehlalarm und wuerde saemtliche Zuordnungen
-               vernichten – danach laesst sich keine AAO mehr
-               kategorisieren.
+               Zuordnungen werden grundsaetzlich nie geloescht.
                ----------------------------------------------------- */
 
-            const canPrune = seenSettingsKeys.size > 0 &&
+            const listIsAuthoritative = rows.length > 0 ||
+                findSettingsSearchInput() !== null;
+
+            const canPrune = listIsAuthoritative &&
                 !settingsSearchValue.trim();
 
             if (canPrune) {
@@ -1001,27 +1141,18 @@
                     }
                 }
             }
-        } else {
-            /* -----------------------------------------------------
-               Es ist keine AAO angelegt, die native Liste fehlt
-               also komplett. Katalogeintraege verwerfen, damit
-               keine veralteten AAOs angezeigt werden. Die
-               Zuordnungen bleiben erhalten, damit sie nach dem
-               Anlegen der ersten AAO wieder greifen.
-               ----------------------------------------------------- */
-
-            for (const [key, aao] of aaoCatalog) {
-                if (aao.source !== 'settings') {
-                    continue;
-                }
-
-                aaoCatalog.delete(key);
-                originalAAORows.delete(key);
-                selectedAAOs.delete(key);
-
-                changed = true;
-            }
         }
+
+        /* -----------------------------------------------------
+           Laesst sich die Liste nicht auslesen, bleibt der
+           Katalog unangetastet. Das ist kein Beleg dafuer, dass
+           die AAOs nicht mehr existieren: der Einstellungs-
+           Dialog kann schlicht geschlossen sein. Ohne diese
+           Regel waere der Katalog bei jedem Schliessen des
+           Dialogs leer und die Mitschrift wuerde flackern.
+           Aufgeraeumt wird erst wieder, wenn die Liste lesbar
+           ist und keine Zuordnung mehr zu ihr gehoert.
+           ----------------------------------------------------- */
 
         /* -----------------------------------------------------
            Dispatch AAOs
@@ -2376,15 +2507,31 @@
     function hookSettingsSearch() {
         const input = findSettingsSearchInput();
 
+        /* -----------------------------------------------------
+           Wechselt das Suchfeld, weil das Spiel den Dialog neu
+           aufbaut, muss der alte Begriff verschwinden. Bliebe
+           er stehen, filterte die Mitschrift dauerhaft nach
+           einem Wert, den niemand mehr sieht – und der Katalog
+           wuerde nie mehr bereinigt.
+           ----------------------------------------------------- */
+
+        if (hookedSettingsSearchInput &&
+            hookedSettingsSearchInput !== input) {
+            hookedSettingsSearchInput = null;
+            settingsSearchValue = '';
+        }
+
         if (!input) {
             return;
         }
 
         if (input.dataset.afiliaSearchHooked === 'true') {
+            hookedSettingsSearchInput = input;
             return;
         }
 
         input.dataset.afiliaSearchHooked = 'true';
+        hookedSettingsSearchInput = input;
 
         input.addEventListener('input', () => {
             settingsSearchValue = input.value || '';
@@ -2464,6 +2611,7 @@
         } else {
             lastSettingsSection = null;
             settingsSearchValue = '';
+            hookedSettingsSearchInput = null;
 
             document.querySelector(
                 `#${AAO_SETTINGS_PANEL_ID}`
@@ -2549,6 +2697,7 @@
         lastSettingsSection = null;
         dispatchSearchValue = '';
         settingsSearchValue = '';
+        hookedSettingsSearchInput = null;
         draggedCategoryID = null;
         draggedAAOKey = null;
         uncategorizedAAOOrder = [];
@@ -2564,7 +2713,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.3',
+        version: '1.0.4',
         init,
         onScan,
         dispose
