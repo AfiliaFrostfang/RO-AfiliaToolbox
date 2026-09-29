@@ -563,13 +563,17 @@
     const SETTINGS_ROW_DELETE_SELECTOR =
         'button[data-slot="alert-dialog-trigger"]';
 
-    function getAAOContainers() {
-        return Array.from(
-            document.querySelectorAll(
-                '[data-slot="sortable-content"]'
-            )
-        );
-    }
+    /* -----------------------------------------------------
+       Eine Zeile wird an ihren Bestandteilen erkannt: Name
+       („span.font-semibold"), Kurzbeschreibung
+       („span.font-mono") und die beiden Aktionen (Stift und
+       Löschdialog). Das ist in beiden vom Spiel gerenderten
+       Zeilengestaltungen vorhanden – unabhaengig davon, ob der
+       Ziehgriff da ist oder nicht.
+
+       Das Formular „Neue AAO" hat diese Aktionen nicht und wird
+       deshalb nie als Zeile gelesen.
+       ----------------------------------------------------- */
 
     function isAAORow(element) {
         if (!element || !element.matches('div')) {
@@ -597,23 +601,50 @@
         );
     }
 
-    function getAAORows(container) {
-        if (!container) {
+    /* -----------------------------------------------------
+       Der Container wird nicht mehr an einem data-slot
+       festgemacht – der hat sich in der aktuellen Fassung des
+       Spiels geaendert und ist derzeit gar nicht mehr vorhanden.
+       Gesucht wird die Liste als gemeinsamer Elternknoten der
+       erkannten Zeilen. Das gilt fuer beide Zeilengestaltungen
+       und haengt nicht an Klassen oder Attributen der Liste.
+       ----------------------------------------------------- */
+
+    function getSettingsAAORows() {
+        /* Die Suche bleibt auf dem Abschnitt der Einstellungen.
+           Das Spiel öffnet Fenster nebeneinander; eine ähnlich
+           aufgebaute Liste in einem anderen Fenster gehört nicht
+           zu diesem Applet. */
+
+        const scope = findSettingsAAOSection() || document;
+
+        const candidates = Array.from(
+            scope.querySelectorAll('div')
+        ).filter(isAAORow);
+
+        if (candidates.length === 0) {
             return [];
         }
 
-        return Array.from(container.children).filter(isAAORow);
+        /* Die inhaltliche Pruefung sieht auch uebergeordnete
+           Knoten: der Listencontainer, der die Zeilen umschliesst,
+           erfuellt sie ebenso, weil er Name, Beschreibung und
+           Aktionen seiner Zeilen enthält. Eine Zeile ist deshalb
+           nur, was selbst keine weitere Zeile enthält. Das
+           grenzt die Zeilen zugleich von ihrem Container ab. */
+
+        return candidates.filter(candidate => {
+            return !candidates.some(other => {
+                return other !== candidate &&
+                    candidate.contains(other);
+            });
+        });
     }
 
-    /* Der Container ist derjenige, der mindestens eine echte
-       Zeile traegt. Ist keine Liste gerendert, bleibt das null –
-       das bedeutet aber ausdruecklich nicht, dass es keine
-       AAOs gibt. */
-
     function findSettingsAAOContainer() {
-        return getAAOContainers().find(container => {
-            return getAAORows(container).length > 0;
-        }) || null;
+        const rows = getSettingsAAORows();
+
+        return rows.length > 0 ? rows[0].parentElement : null;
     }
 
     function findSettingsDialog() {
@@ -854,12 +885,15 @@
            Settings AAOs
            ----------------------------------------------------- */
 
-        const settingsContainer = findSettingsAAOContainer();
+        const settingsRows = getSettingsAAORows();
+        const settingsContainer = settingsRows.length > 0
+            ? settingsRows[0].parentElement
+            : null;
 
         if (settingsContainer) {
             const seenSettingsKeys = new Set();
 
-            const rows = getAAORows(settingsContainer);
+            const rows = settingsRows;
 
             for (const row of rows) {
                 const nameElement = row.querySelector(
@@ -1122,35 +1156,25 @@
            ----------------------------------------------------- */
 
         if (!original || !original.isConnected) {
-            const settingsContainer = findSettingsAAOContainer();
-
-            if (settingsContainer) {
-                const rows = Array.from(
-                    settingsContainer.querySelectorAll(
-                        ':scope > [data-slot="sortable-item"]'
-                    )
+            for (const row of getSettingsAAORows()) {
+                const nameElement = row.querySelector(
+                    'span.font-semibold'
                 );
 
-                for (const row of rows) {
-                    const nameElement = row.querySelector(
-                        'span.font-semibold'
-                    );
+                if (!nameElement) {
+                    continue;
+                }
 
-                    if (!nameElement) {
-                        continue;
-                    }
+                if (
+                    api.getAAOKey(
+                        nameElement.textContent.trim()
+                    ) === key
+                ) {
+                    original = row;
 
-                    if (
-                        api.getAAOKey(
-                            nameElement.textContent.trim()
-                        ) === key
-                    ) {
-                        original = row;
+                    originalAAORows.set(key, row);
 
-                        originalAAORows.set(key, row);
-
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -1659,20 +1683,26 @@
 
         const container = findSettingsAAOContainer();
 
-        const host =
-            section.querySelector(':scope > div.space-y-2') ||
-            section;
+        /* -----------------------------------------------------
+           Das Panel gehoert als Geschwister direkt unter den
+           Abschnitt, nie in die native Liste hinein. Der Abschnitt
+           ist der Knoten, der im Spiel stabil bleibt; die Liste
+           darunter wird beim Aendern neu aufgebaut. Laege das
+           Panel in der Liste, wuerde es bei jedem Neuaufbau mit
+           verschwinden – und waere beim Ausblenden der Liste
+           selbst unsichtbar.
+           ----------------------------------------------------- */
 
         let panel = document.querySelector(
             `#${AAO_SETTINGS_PANEL_ID}`
         );
 
-        if (!panel || panel.parentElement !== host) {
+        if (!panel || panel.parentElement !== section) {
             panel?.remove();
 
             panel = createSettingsPanel();
 
-            host.appendChild(panel);
+            section.appendChild(panel);
         }
 
         if (container) {
