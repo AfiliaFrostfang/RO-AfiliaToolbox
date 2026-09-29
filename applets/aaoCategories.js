@@ -12,38 +12,6 @@
     const UNCATEGORIZED_ORDER_KEY = 'aaoUncategorizedOrder';
     const STYLES_ID = 'afilia-applet-aao-styles';
 
-    /* -----------------------------------------------------
-       Anker der nativen AAO-Liste, belegt am echten Markup.
-
-       Die Liste ist ein „div[data-slot=sortable-content]", und
-       ihre Zeilen sind dessen direkte Kinder
-       „div[data-slot=sortable-item]". Jede Zeile traegt den
-       Ziehgriff „button[data-slot=sortable-item-handle]"
-       mit dem Titel „AAO verschieben".
-
-       Wichtig: Suchfeld und Button „Neue AAO anlegen" sind
-       Geschwister des Listen-Containers, keine Kinder. Ein
-       Anker ueber den Button – von ihm aus die Vorfahren
-       nach „div.space-y-2" durchsuchen – erreicht die Liste
-       darum nie und liefert konstant null. Genau daran ist
-       zuletzt alles gescheitert: ohne Container blieb der
-       Katalog leer und es passierte gar nichts mehr.
-
-       Das Formular „Neue AAO" benutzt denselben
-       sortable-Mechanismus, seine „sortable-item"-Knoten
-       tragen aber keinen Ziehgriff mit dem Titel
-       „AAO verschieben". Nur die Kombination aus
-       data-slot und diesem Titel trennt Liste und Formular
-       zuverlaessig voneinander.
-       ----------------------------------------------------- */
-
-    const SETTINGS_LIST_SELECTOR = '[data-slot="sortable-content"]';
-    const SETTINGS_ROW_SELECTOR = 'div[data-slot="sortable-item"]';
-    const SETTINGS_ROW_HANDLE_SELECTOR =
-        '[data-slot="sortable-item-handle"][title="AAO verschieben"]';
-    const SETTINGS_CREATE_FORM_HEADING = 'Neue AAO';
-    const SETTINGS_SECTION_HEADING = 'Alarm- und Ausrückeordnung';
-
     const DEFAULT_CATEGORIES = [
         {
             id: 'fire',
@@ -70,21 +38,6 @@
     const aaoCatalog = new Map();
     const selectedAAOs = new Set();
     const originalAAORows = new Map();
-
-    /* Keys der AAOs, die das Spiel in den Einstellungen gerade
-       anzeigt. Waehrend einer Suche ist das der gefilterte
-       Ausschnitt und damit die Antwort auf die Suchfrage. */
-    let visibleSettingsAAOKeys = new Set();
-
-    /* -----------------------------------------------------
-       Signature des sichtbaren Ausschnitts. Eine Suche aendert
-       den Katalog nicht, nur seinen Ausschnitt – ohne diese
-       Merkung faellt die Aenderung beim Neuzeichnen auf, weil
-       sich der Katalog selbst nicht bewegt hat, und das Panel
-       zeigte weiter alle AAOs.
-       ----------------------------------------------------- */
-    let lastVisibleSettingsSignature = null;
-    let visibleSettingsChanged = false;
 
     let lastDispatchContainer = null;
     let lastSettingsSection = null;
@@ -586,218 +539,35 @@
        AAO discovery
        ========================================================= */
 
-    /* -----------------------------------------------------
-       Native AAO-Liste in den Einstellungen.
-
-       Erkannt wird ausschliesslich an den Zeilen selbst: nur
-       sie tragen den Ziehgriff mit dem Titel
-       „AAO verschieben". Der Dialog wird dazu nicht
-       ausgewertet, damit weder die Aktionen der Zeilen noch
-       die Suche des Spiels mitgefiltert werden.
-       ----------------------------------------------------- */
-
-    function getSettingsAAORowNameElement(row) {
-        if (!row) {
-            return null;
-        }
-
-        return row.querySelector('span.font-semibold');
-    }
-
-    function isSettingsAAORow(element) {
-        if (!element || !element.matches(SETTINGS_ROW_SELECTOR)) {
-            return false;
-        }
-
-        if (element.querySelector(`#${AAO_SETTINGS_PANEL_ID}`)) {
-            return false;
-        }
-
-        if (!element.querySelector(SETTINGS_ROW_HANDLE_SELECTOR)) {
-            return false;
-        }
-
-        if (element.querySelector('form, input, textarea, select')) {
-            return false;
-        }
-
-        return !!getSettingsAAORowNameElement(element);
-    }
-
-    function getSettingsAAORows(container) {
-        if (!container) {
-            return [];
-        }
-
-        return Array.from(container.children).filter(
-            isSettingsAAORow
+    function getAAOContainers() {
+        return Array.from(
+            document.querySelectorAll(
+                '[data-slot="sortable-content"]'
+            )
         );
     }
 
-    function getSettingsLists(root) {
-        if (!root) {
-            return [];
+    function isSettingsAAOContainer(container) {
+        if (!container) {
+            return false;
         }
 
-        return Array.from(root.querySelectorAll(SETTINGS_LIST_SELECTOR));
+        return !!container.querySelector(
+            '[data-slot="sortable-item-handle"][title="AAO verschieben"]'
+        );
     }
 
-    /* -----------------------------------------------------
-       Das Formular „Neue AAO" ersetzt die Listenansicht. Dann
-       gibt es zwar sortable-Knoten, aber keine AAO-Zeilen.
-       In diesem Zustand darf der Katalog nicht geleert und
-       nicht als leer interpretiert werden.
-       ----------------------------------------------------- */
-
-    function findSettingsCreateFormHeading(dialog) {
-        if (!dialog) {
-            return null;
-        }
-
-        return Array.from(dialog.querySelectorAll('h3')).find(
-            heading => {
-                return heading.textContent.trim() ===
-                    SETTINGS_CREATE_FORM_HEADING;
-            }
+    function findSettingsAAOContainer() {
+        return getAAOContainers().find(
+            isSettingsAAOContainer
         ) || null;
     }
 
-    function isSettingsCreateFormOpen(dialog) {
-        return !!findSettingsCreateFormHeading(
-            dialog || findSettingsDialog()
-        );
-    }
-
-    /* -----------------------------------------------------
-       Gesucht wird der sortable-Container, der echte
-       AAO-Zeilen traegt. Traegt keiner welche, ist die Liste
-       leer – dann wird der erste Container der Ansicht
-       genommen, damit das Panel weiterhin einen stabilen
-       Anker hat und eine leere Liste als leer erkannt wird.
-
-       Fehlt jeder sortable-Container, ist die Liste nicht
-       gerendert: beim Wechsel auf einen anderen Reiter baut
-       das Spiel den Tab-Inhalt ab. Dann liefert die Suche
-       null, ohne den Katalog anzutasten.
-       ----------------------------------------------------- */
-
-    function findSettingsAAOContainer() {
-        const dialog = findSettingsDialog();
-
-        if (!dialog) {
-            return null;
-        }
-
-        const lists = getSettingsLists(dialog);
-
-        if (lists.length === 0) {
-            return null;
-        }
-
-        if (isSettingsCreateFormOpen(dialog)) {
-            return null;
-        }
-
-        return lists.find(list => {
-            return getSettingsAAORows(list).length > 0;
-        }) || lists[0];
-    }
-
-    function findSettingsSearchInput() {
-        const dialog = findSettingsDialog();
-
-        if (!dialog || isSettingsCreateFormOpen(dialog)) {
-            return null;
-        }
-
-        /* -----------------------------------------------------
-           Das Suchfeld ist Geschwister des Listen-Containers,
-           nicht dessen Kind, und liegt deshalb ausserhalb.
-           Gesucht wird daher im Dialog – aber nur in
-           Eingabefeldern, die weder in einer sortable-Liste
-           noch im Formular „Neue AAO" liegen. Andernfalls
-           waere das Titelfeld des Formulars der erste
-           Treffer und der eingegebene Name wuerde als
-           Suchbegriff gelten.
-           ----------------------------------------------------- */
-
-        const candidates = Array.from(
-            dialog.querySelectorAll('input')
-        ).filter(input => {
-            if (input.type === 'hidden') {
-                return false;
-            }
-
-            if (input.closest(SETTINGS_LIST_SELECTOR)) {
-                return false;
-            }
-
-            return !findSettingsCreateFormHeading(
-                input.closest('div')
-            ) && !input.closest('form');
-        });
-
-        if (candidates.length === 0) {
-            return null;
-        }
-
-        /* Ein Suchfeld ist bevorzugt, weil es zuerst gefunden
-           wird. Fehlt der Hinweis, greift die Reihenfolge. */
-
-        return candidates.find(input => {
-            const hint = [
-                input.type,
-                input.placeholder,
-                input.name,
-                input.id,
-                input.getAttribute('aria-label')
-            ].join(' ').toLowerCase();
-
-            return /search|such|filter|find/.test(hint);
-        }) || candidates[0];
-    }
-
-    /* -----------------------------------------------------
-       Die nativen Zeilen werden einzeln ausgeblendet. Der
-       Container selbst bleibt sichtbar, sonst verschwänden
-       Suchfeld und der Button „Neue AAO anlegen".
-       ----------------------------------------------------- */
-
-    function hideSettingsAAORows() {
-        for (const row of getSettingsAAORows(
-            findSettingsAAOContainer()
-        )) {
-            /* Nur setzen, wenn es sich aendert: Jede
-               Mutation loest ueber den Observer einen Scan
-               aus, der wiederum das Panel neu aufbaut. */
-
-            if (row.style.display !== 'none') {
-                row.style.display = 'none';
-            }
-        }
-    }
-
-    function showSettingsAAORows() {
-        for (const row of getSettingsAAORows(
-            findSettingsAAOContainer()
-        )) {
-            row.style.display = '';
-        }
-    }
-
-    /* -----------------------------------------------------
-       Der Dialog traegt laut Markup die Kopfzeile
-       „Einstellungen" als „h2[data-slot=sheet-title]" in
-       einem „div[data-slot=sheet-header]". Geprüft wird
-       deshalb „[role=dialog]" und darin der Titeltext, statt
-       sich auf „data-slot=sheet-content" zu verlassen: liegt
-       der Kopf ausserhalb dieses Knotens, wurde der Dialog
-       vorher nicht erkannt und es passierte gar nichts.
-       ----------------------------------------------------- */
-
     function findSettingsDialog() {
         const dialogs = Array.from(
-            document.querySelectorAll('[role="dialog"]')
+            document.querySelectorAll(
+                '[role="dialog"][data-slot="sheet-content"]'
+            )
         );
 
         return dialogs.find(dialog => {
@@ -830,7 +600,7 @@
             dialog.querySelectorAll('h3')
         ).find(h3 => {
             return h3.textContent.trim() ===
-                SETTINGS_SECTION_HEADING;
+                'Alarm- und Ausrückeordnung';
         });
 
         if (!heading) {
@@ -838,42 +608,6 @@
         }
 
         return heading.closest('div.space-y-4') || null;
-    }
-
-    /* -----------------------------------------------------
-       Platzierung des Kategorien-Panels.
-
-       Das Panel gehört NIE in die native AAO-Liste. Das Spiel
-       baut diese Liste bei jeder Änderung neu auf und würde
-       das Panel dabei wieder entfernen – die Kategorien wären
-       zwar sichtbar, aber jede Auswahl im Dropdown würde
-       verworfen, bevor eine Auswahl möglich ist.
-
-       Solange die native Liste existiert, hängt das Panel
-       deshalb direkt dahinter. Fehlt die Liste (neues Spiel),
-       wird der Abschnitt als Anker genutzt.
-       ----------------------------------------------------- */
-
-    function getSettingsPanelPlacement() {
-        const container = findSettingsAAOContainer();
-
-        if (container && container.parentElement) {
-            return {
-                host: container.parentElement,
-                anchor: container.nextSibling
-            };
-        }
-
-        const section = findSettingsAAOSection();
-
-        if (!section) {
-            return null;
-        }
-
-        return {
-            host: section,
-            anchor: null
-        };
     }
 
     function findDispatchDialog() {
@@ -1072,10 +806,16 @@
         if (settingsContainer) {
             const seenSettingsKeys = new Set();
 
-            const rows = getSettingsAAORows(settingsContainer);
+            const rows = Array.from(
+                settingsContainer.querySelectorAll(
+                    ':scope > [data-slot="sortable-item"]'
+                )
+            );
 
             for (const row of rows) {
-                const nameElement = getSettingsAAORowNameElement(row);
+                const nameElement = row.querySelector(
+                    'span.font-semibold'
+                );
 
                 if (!nameElement) {
                     continue;
@@ -1090,19 +830,9 @@
                 const key = api.getAAOKey(name);
                 seenSettingsKeys.add(key);
 
-                /* -----------------------------------------------------
-                   Die Kurzbeschreibung ist ein Badge direkt neben
-                   dem Namen. Ueber die Position ermitteln, damit
-                   eine Aenderung der Hilfsklassen nicht stoert.
-                   ----------------------------------------------------- */
-
-                const infoElement = nameElement.parentElement;
-
-                const summaryElement = infoElement
-                    ? Array.from(infoElement.children).find(
-                        child => child !== nameElement
-                    )
-                    : null;
+                const summaryElement = row.querySelector(
+                    'span.font-mono'
+                );
 
                 const summary = summaryElement
                     ? summaryElement.textContent.trim()
@@ -1129,76 +859,44 @@
                 }
             }
 
-            /* Was das Spiel gerade anzeigt, ist die Antwort auf
-               eine laufende Suche. Der Katalog behaelt weiterhin
-               alle AAOs, nur dieser Ausschnitt bestimmt, was
-               sichtbar ist. */
+            for (const [key, aao] of aaoCatalog) {
+                if (
+                    aao.source === 'settings' &&
+                    !seenSettingsKeys.has(key)
+                ) {
+                    aaoCatalog.delete(key);
+                    originalAAORows.delete(key);
+                    selectedAAOs.delete(key);
 
-            visibleSettingsAAOKeys = seenSettingsKeys;
-            markVisibleSettings(seenSettingsKeys);
+                    if (assignments[key]) {
+                        delete assignments[key];
 
-            /* -----------------------------------------------------
-               Katalogeintraege entfernen, die nicht mehr in der
-               nativen Liste stehen.
-
-               Geraeumt wird nur, wenn der Listen-Container
-               wirklich gefunden wurde und nachweislich
-               auslesbar ist: entweder stehen Zeilen darin oder
-               das Suchfeld ist vorhanden. Traegt der Dialog
-               keinen einzigen sortable-Container, ist die Liste
-               nicht gerendert – dann laesst sich eine leere
-               Liste nicht von einem Reiterwechsel unterscheiden
-               und das Entfernen waere ein Fehlalarm, der die
-               gesamte Mitschrift loescht. Dasselbe gilt fuer
-               das geoeffnete Formular „Neue AAO": es ersetzt
-               die Listenansicht und ist kein Beweis fuer
-               verschwundene AAOs.
-
-               Waehrend einer Suche zeigt das Spiel nur einen
-               Teil der AAOs, dann darf nichts entfernt werden.
-               Zuordnungen werden grundsaetzlich nie geloescht.
-               ----------------------------------------------------- */
-
-            const listIsAuthoritative = rows.length > 0 ||
-                findSettingsSearchInput() !== null;
-
-            const canPrune = listIsAuthoritative &&
-                !getSettingsSearchValue().trim();
-
-            if (canPrune) {
-                for (const [key, aao] of aaoCatalog) {
-                    if (
-                        aao.source === 'settings' &&
-                        !seenSettingsKeys.has(key)
-                    ) {
-                        aaoCatalog.delete(key);
-                        originalAAORows.delete(key);
-                        selectedAAOs.delete(key);
-
-                        changed = true;
+                        saveAssignments().catch(console.error);
                     }
+
+                    changed = true;
                 }
             }
-        }
+        } else {
+            /* -----------------------------------------------------
+               Es ist keine AAO angelegt, die native Liste fehlt
+               also komplett. Katalogeintraege verwerfen, damit
+               keine veralteten AAOs angezeigt werden. Die
+               Zuordnungen bleiben erhalten, damit sie nach dem
+               Anlegen der ersten AAO wieder greifen.
+               ----------------------------------------------------- */
 
-        /* -----------------------------------------------------
-           Laesst sich die Liste nicht auslesen, bleibt der
-           Katalog unangetastet. Das ist kein Beleg dafuer, dass
-           die AAOs nicht mehr existieren: der Einstellungs-
-           Dialog kann schlicht geschlossen sein. Ohne diese
-           Regel waere der Katalog bei jedem Schliessen des
-           Dialogs leer und die Mitschrift wuerde flackern.
-           Aufgeraeumt wird erst wieder, wenn die Liste lesbar
-           ist und keine Zuordnung mehr zu ihr gehoert.
+            for (const [key, aao] of aaoCatalog) {
+                if (aao.source !== 'settings') {
+                    continue;
+                }
 
-           Der sichtbare Ausschnitt wird dann geleert: es steht
-           nichts Sicheres mehr fest, und eine Suche darf keine
-           Zeilen zeigen, die es nicht gibt.
-           ----------------------------------------------------- */
+                aaoCatalog.delete(key);
+                originalAAORows.delete(key);
+                selectedAAOs.delete(key);
 
-        if (!settingsContainer) {
-            visibleSettingsAAOKeys = new Set();
-            markVisibleSettings(visibleSettingsAAOKeys);
+                changed = true;
+            }
         }
 
         /* -----------------------------------------------------
@@ -1378,27 +1076,35 @@
            ----------------------------------------------------- */
 
         if (!original || !original.isConnected) {
-            const rows = getSettingsAAORows(
-                findSettingsAAOContainer()
-            );
+            const settingsContainer = findSettingsAAOContainer();
 
-            for (const row of rows) {
-                const nameElement = getSettingsAAORowNameElement(row);
+            if (settingsContainer) {
+                const rows = Array.from(
+                    settingsContainer.querySelectorAll(
+                        ':scope > [data-slot="sortable-item"]'
+                    )
+                );
 
-                if (!nameElement) {
-                    continue;
-                }
+                for (const row of rows) {
+                    const nameElement = row.querySelector(
+                        'span.font-semibold'
+                    );
 
-                if (
-                    api.getAAOKey(
-                        nameElement.textContent.trim()
-                    ) === key
-                ) {
-                    original = row;
+                    if (!nameElement) {
+                        continue;
+                    }
 
-                    originalAAORows.set(key, row);
+                    if (
+                        api.getAAOKey(
+                            nameElement.textContent.trim()
+                        ) === key
+                    ) {
+                        original = row;
 
-                    break;
+                        originalAAORows.set(key, row);
+
+                        break;
+                    }
                 }
             }
         }
@@ -1448,49 +1154,8 @@
     }
 
     /* =========================================================
-       Category UI
+       Dispatch category UI
        ========================================================= */
-
-    /* -----------------------------------------------------
-       Waehrend einer Suche entscheidet allein das Spiel, was
-       gefunden wurde – es blendet seine Zeilen ja selbst aus.
-       Die Mitschrift filtert deshalb nicht noch einmal mit
-       eigenem Text, sondern zeigt genau die Zeilen, die das
-       Spiel gerade stehen laesst.
-
-       Ein eigener Textvergleich waere eine zweite, schlechtere
-       Kopie derselben Filterung: das Spiel sucht ueber mehr
-       Felder als Name und Kurzbeschreibung. Was es findet,
-       fehlte in der Mitschrift, und die AAO war weg, sobald
-       sie aus „Nicht zugeordnet“ in eine Kategorie wanderte.
-       ----------------------------------------------------- */
-
-    function matchesSettingsList(aao, search) {
-        if (!search) {
-            return true;
-        }
-
-        return visibleSettingsAAOKeys.has(aao.key);
-    }
-
-    /* -----------------------------------------------------
-       Vermerkt, ob sich der sichtbare Ausschnitt der Liste
-       gegenueber dem letzten Durchlauf veraendert hat. Geaendert
-       hat sich dann nur die Anzeige des Spiels, nicht der
-       Katalog – das Panel muss trotzdem neu gezeichnet
-       werden, sonst bleibt der alte Ausschnitt stehen.
-       ----------------------------------------------------- */
-
-    function markVisibleSettings(keys) {
-        const signature = Array.from(keys).sort().join('\u0000');
-
-        if (signature === lastVisibleSettingsSignature) {
-            return;
-        }
-
-        lastVisibleSettingsSignature = signature;
-        visibleSettingsChanged = true;
-    }
 
     function sortAAOs(aaos, order) {
         const ordering = Array.isArray(order) ? order : [];
@@ -1940,36 +1605,33 @@
     }
 
     function renderSettingsPanel() {
-        const placement = getSettingsPanelPlacement();
+        const section = findSettingsAAOSection();
 
-        if (!placement) {
+        if (!section) {
             return;
         }
+
+        const container = findSettingsAAOContainer();
+
+        const host =
+            section.querySelector(':scope > div.space-y-2') ||
+            section;
 
         let panel = document.querySelector(
             `#${AAO_SETTINGS_PANEL_ID}`
         );
 
-        if (!panel) {
+        if (!panel || panel.parentElement !== host) {
+            panel?.remove();
+
             panel = createSettingsPanel();
+
+            host.appendChild(panel);
         }
 
-        /* -----------------------------------------------------
-           Der Anker ist der Knoten direkt hinter der nativen
-           Liste. Liegt das Panel dort, ist der Anker das Panel
-           selbst – dann darf nichts verschoben werden. Jede
-           ueberfluessige Bewegung wuerde das Panel bei jedem
-           Scan neu aufbauen und offene Dropdown schliessen.
-           ----------------------------------------------------- */
-
-        if (
-            panel.parentElement !== placement.host ||
-            panel !== placement.anchor
-        ) {
-            placement.host.insertBefore(panel, placement.anchor);
+        if (container) {
+            container.style.display = 'none';
         }
-
-        hideSettingsAAORows();
 
         ensureAAOOrdersSynced();
 
@@ -2042,8 +1704,6 @@
         /* -----------------------------------------------------
            Categories
            ----------------------------------------------------- */
-
-        const search = getSettingsSearchValue().trim();
 
         for (const category of categories) {
             const section = document.createElement('div');
@@ -2177,8 +1837,7 @@
 
             const aaos = sortAAOs(
                 Array.from(aaoCatalog.values()).filter(aao => {
-                    return assignments[aao.key] === category.id &&
-                        matchesSettingsList(aao, search);
+                    return assignments[aao.key] === category.id;
                 }),
                 category.aaoOrder
             );
@@ -2277,20 +1936,7 @@
            Uncategorized
            ----------------------------------------------------- */
 
-        const uncategorized = getUncategorizedAAOs().filter(aao => {
-            return matchesSettingsList(aao, search);
-        });
-
-        if (search && uncategorized.length === 0) {
-            const hint = document.createElement('div');
-
-            hint.className = 'afilia-settings-empty-hint';
-
-            hint.textContent =
-                `Keine AAO gefunden für „${getSettingsSearchValue().trim()}".`;
-
-            panel.appendChild(hint);
-        }
+        const uncategorized = getUncategorizedAAOs();
 
         if (uncategorized.length > 0) {
             const section = document.createElement('div');
@@ -2477,16 +2123,6 @@
             renderDispatchPanel();
         });
 
-        /* -----------------------------------------------------
-           Bearbeiten und Loeschen werden an die nativen
-           Aktionsschaltflaechen der Zeile weitergereicht.
-           In der aktuellen Markup-Variante sitzen sie in der
-           Aktionsspalte: „data-slot=button" bearbeitet,
-           „data-slot=alert-dialog-trigger" fragt vor dem
-           Loeschen nach. Die Icon-Erkennung bleibt als
-           Rueckfall bestehen.
-           ----------------------------------------------------- */
-
         row.querySelector('.afilia-settings-edit')
             .addEventListener('click', event => {
                 event.preventDefault();
@@ -2498,26 +2134,19 @@
                     return;
                 }
 
-                const buttons = Array.from(
+                const editButton = Array.from(
                     original.querySelectorAll('button')
-                );
+                ).find(button => {
+                    const svg = button.querySelector('svg');
 
-                const byIcon = button => {
-                    const svgClass =
-                        button.querySelector('svg')?.getAttribute(
-                            'class'
-                        ) || '';
-
-                    return svgClass.includes('pencil');
-                };
-
-                const editButton =
-                    buttons.find(button => {
-                        return button.getAttribute('data-slot') ===
-                            'button';
-                    }) ||
-                    buttons.find(byIcon) ||
-                    buttons[0];
+                    return (
+                        svg &&
+                        (
+                            svg.classList.contains('lucide-pencil') ||
+                            svg.getAttribute('class')?.includes('pencil')
+                        )
+                    );
+                });
 
                 if (editButton) {
                     editButton.click();
@@ -2535,15 +2164,13 @@
                     return;
                 }
 
-                const buttons = Array.from(
+                const deleteButton = Array.from(
                     original.querySelectorAll('button')
-                );
+                ).find(button => {
+                    const svg = button.querySelector('svg');
 
-                const isDeleteButton = button => {
                     const svgClass =
-                        button.querySelector('svg')?.getAttribute(
-                            'class'
-                        ) || '';
+                        svg?.getAttribute('class') || '';
 
                     return (
                         svgClass.includes('trash') ||
@@ -2554,14 +2181,7 @@
                             button.getAttribute('title') || ''
                         )
                     );
-                };
-
-                const deleteButton =
-                    buttons.find(button => {
-                        return button.getAttribute('data-slot') ===
-                            'alert-dialog-trigger';
-                    }) ||
-                    buttons.find(isDeleteButton);
+                });
 
                 if (deleteButton) {
                     deleteButton.click();
@@ -2574,57 +2194,6 @@
     /* =========================================================
        Search synchronization
        ========================================================= */
-
-    /* -----------------------------------------------------
-       Das Suchfeld der nativen AAO-Liste filtert die
-       Toolbox-Mitschrift. Die nativen Zeilen sind ausgeblendet,
-       das Feld selbst bleibt sichtbar.
-       ----------------------------------------------------- */
-
-    /* -----------------------------------------------------
-       Der Suchbegriff wird immer aus dem Feld des Spiels
-       gelesen, nie in einer eigenen Variable gehalten.
-
-       Das Spiel baut sein Feld beim Filtern neu auf. Eine
-       eigene Variable laege dann zurueck, waehrend das Spiel
-       weiterhin filtert – die Mitschrift glaubte, es werde
-       nicht gesucht, raeumte den Katalog auf und loeschte
-       genau die AAOs, die gerade gesucht wurden. Der Begriff
-       kommt deshalb direkt aus dem Feld, das der Spieler
-       sieht.
-       ----------------------------------------------------- */
-
-    function getSettingsSearchValue() {
-        const input = findSettingsSearchInput();
-
-        return input ? (input.value || '') : '';
-    }
-
-    function hookSettingsSearch() {
-        const input = findSettingsSearchInput();
-
-        if (!input) {
-            return;
-        }
-
-        if (input.dataset.afiliaSearchHooked === 'true') {
-            return;
-        }
-
-        input.dataset.afiliaSearchHooked = 'true';
-
-        input.addEventListener('input', () => {
-            /* Das Spiel blendet seine Zeilen erst nach diesem
-               Ereignis aus. Die native Liste wird deshalb hier
-               noch einmal gelesen, statt auf den Beobachter zu
-               warten – sonst zeigte die Mitschrift kurzzeitig
-               ein Ergebnis, das das Spiel gar nicht anzeigt. */
-
-            discoverAAOs();
-
-            renderSettingsPanel();
-        });
-    }
 
     function hookDispatchSearch(dialog) {
         const input = dialog?.querySelector(
@@ -2661,10 +2230,7 @@
     }
 
     function onScan() {
-        visibleSettingsChanged = false;
-
         const catalogChanged = discoverAAOs();
-        const visibleChanged = visibleSettingsChanged;
 
         /* -----------------------------------------------------
            Settings
@@ -2673,30 +2239,16 @@
         const settingsSection = findSettingsAAOSection();
 
         if (settingsSection) {
-            hookSettingsSearch();
-
-            const panel = document.querySelector(
-                `#${AAO_SETTINGS_PANEL_ID}`
-            );
-
-            const placement = getSettingsPanelPlacement();
-
-            const panelPlaced = !!panel &&
-                !!placement &&
-                panel.parentElement === placement.host &&
-                panel === placement.anchor;
-
             if (
-                !panelPlaced ||
                 settingsSection !== lastSettingsSection ||
-                catalogChanged ||
-                visibleChanged
+                !document.querySelector(
+                    `#${AAO_SETTINGS_PANEL_ID}`
+                ) ||
+                catalogChanged
             ) {
                 lastSettingsSection = settingsSection;
 
                 renderSettingsPanel();
-            } else {
-                hideSettingsAAORows();
             }
         } else {
             lastSettingsSection = null;
@@ -2755,11 +2307,15 @@
     }
 
     function dispose() {
-        showSettingsAAORows();
-
         document.querySelector(
             `#${AAO_SETTINGS_PANEL_ID}`
         )?.remove();
+
+        const settingsContainer = findSettingsAAOContainer();
+
+        if (settingsContainer) {
+            settingsContainer.style.display = '';
+        }
 
         const dispatchDialog = findDispatchDialog();
 
@@ -2783,9 +2339,6 @@
 
         lastDispatchContainer = null;
         lastSettingsSection = null;
-        lastVisibleSettingsSignature = null;
-        visibleSettingsAAOKeys = new Set();
-        visibleSettingsChanged = false;
         dispatchSearchValue = '';
         draggedCategoryID = null;
         draggedAAOKey = null;
@@ -2802,7 +2355,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.5',
+        version: '1.0.2',
         init,
         onScan,
         dispose
