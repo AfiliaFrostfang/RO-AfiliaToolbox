@@ -610,6 +610,44 @@
         return heading.closest('div.space-y-4') || null;
     }
 
+    /* -----------------------------------------------------
+       Platzierung des Kategorien-Panels.
+
+       Das Panel gehört NIE in die native AAO-Liste. Das Spiel
+       baut diese Liste bei jeder Änderung neu auf und würde
+       das Panel dabei wieder entfernen – die Kategorien wären
+       zwar sichtbar, aber jede Auswahl im Dropdown würde
+       verworfen, bevor eine Auswahl möglich ist.
+
+       Solange die native Liste existiert, hängt das Panel
+       deshalb direkt dahinter. Fehlt die Liste (neues Spiel),
+       wird der Abschnitt als Anker genutzt.
+       ----------------------------------------------------- */
+
+    function getSettingsPanelPlacement() {
+        const container = findSettingsAAOContainer();
+
+        if (container && container.parentElement) {
+            return {
+                container,
+                host: container.parentElement,
+                anchor: container.nextSibling
+            };
+        }
+
+        const section = findSettingsAAOSection();
+
+        if (!section) {
+            return null;
+        }
+
+        return {
+            container: null,
+            host: section,
+            anchor: null
+        };
+    }
+
     function findDispatchDialog() {
         const dialogs = Array.from(
             document.querySelectorAll(
@@ -1605,32 +1643,29 @@
     }
 
     function renderSettingsPanel() {
-        const section = findSettingsAAOSection();
+        const placement = getSettingsPanelPlacement();
 
-        if (!section) {
+        if (!placement) {
             return;
         }
-
-        const container = findSettingsAAOContainer();
-
-        const host =
-            section.querySelector(':scope > div.space-y-2') ||
-            section;
 
         let panel = document.querySelector(
             `#${AAO_SETTINGS_PANEL_ID}`
         );
 
-        if (!panel || panel.parentElement !== host) {
-            panel?.remove();
-
+        if (!panel) {
             panel = createSettingsPanel();
-
-            host.appendChild(panel);
         }
 
-        if (container) {
-            container.style.display = 'none';
+        if (
+            panel.parentElement !== placement.host ||
+            panel.nextSibling !== placement.anchor
+        ) {
+            placement.host.insertBefore(panel, placement.anchor);
+        }
+
+        if (placement.container) {
+            placement.container.style.display = 'none';
         }
 
         ensureAAOOrdersSynced();
@@ -2239,11 +2274,20 @@
         const settingsSection = findSettingsAAOSection();
 
         if (settingsSection) {
+            const panel = document.querySelector(
+                `#${AAO_SETTINGS_PANEL_ID}`
+            );
+
+            const placement = getSettingsPanelPlacement();
+
+            const panelPlaced = !!panel &&
+                !!placement &&
+                panel.parentElement === placement.host &&
+                panel.nextSibling === placement.anchor;
+
             if (
+                !panelPlaced ||
                 settingsSection !== lastSettingsSection ||
-                !document.querySelector(
-                    `#${AAO_SETTINGS_PANEL_ID}`
-                ) ||
                 catalogChanged
             ) {
                 lastSettingsSection = settingsSection;
@@ -2355,7 +2399,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.2',
+        version: '1.0.3',
         init,
         onScan,
         dispose

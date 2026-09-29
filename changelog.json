@@ -56,6 +56,9 @@
     },
     "applets": {
         "aaoCategories": {
+            "1.0.3": [
+                "AAOs aus der Liste „Nicht zugeordnet“ konnten nicht mehr einer Kategorie zugeordnet werden. Die Kategorien wurden angezeigt, das Spiel aber hat die Liste der AAO-Kategorien laufend neu aufgebaut und dabei die Auswahl im Dropdown verworfen."
+            ],
             "1.0.2":[
                 "Unter bestimmten Umständen konnte es vorkommen, dass die AAO-Kategorien nicht korrekt geladen wurden. Zum Beispiel in einem neuen Spiel, in dem noch keine AAOs gespeichert waren."
             ],
