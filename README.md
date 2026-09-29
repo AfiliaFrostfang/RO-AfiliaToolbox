@@ -28,6 +28,13 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Fügt einen Notizblock zu den Rescue OS Schnelltasten hinzu.
 - Speichert Notizen automatisch lokal.
 
+### FMS-5-Alarm
+- Die Glocke in der Schnellzugriffsleiste ist dauerhaft sichtbar und schaltet den **Alarmton des Applets** zwischen „an“ und „aus“. Der Ton des Spiels wird davon nicht berührt – die Auswahl wird lokal gespeichert.
+- Liegt ein Sprechwunsch an, erscheint unter der Statusleiste im Seitenkopf ein rot pulsierender Balken mit dem Hinweis „Sprechwunsch!“. Dieser visuelle Hinweis ist **immer** sichtbar, unabhängig vom Tonmodus.
+- Ist der Ton aus, gibt es ausschließlich den roten Balken. Ist er an, kommen Balken und Alarmton dazu; im Modus „mit Ton“ wird der Ton alle 5 Minuten wiederholt.
+- Der Stummschalter des Spiels wird respektiert: Ist das Spiel global stummgeschaltet, bleibt der FMS-Alarm ohne Ton, der rote Balken aber weiterhin sichtbar. Die Glocke zeigt dann ein durchgestrichenes Lautsprecher-Icon.
+- Icon-Übersicht: Glocke = Ton an, Glocke mit Schrägstrich = Ton per Applet aus, Lautsprecher durchgestrichen = Spiel global stumm.
+
 ### Updates
 - Prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin.
 - Zeigt nach einem Update ein Popup mit den Neuerungen der Toolbox und der Applets.
@@ -60,7 +67,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/manifest.json` | Manifest: Liste aller Applets inkl. Datei und Version. Wird zum Start vom Kern geladen. |
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
-| `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Alarmton bei Sprechwunsch. |
+| `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |
 | `version.json` | Nur die aktuelle Kernversion, wird für den Update-Check verwendet. |
 

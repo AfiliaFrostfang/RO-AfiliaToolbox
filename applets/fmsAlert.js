@@ -21,7 +21,16 @@
 
     const REPEAT_INTERVAL = 5 * 60 * 1000;
     const WATCH_INTERVAL = 1000;
-    const MUTED_STORE_KEY = 'fmsAlertMuted';
+
+    /* Der Warnmodus bestimmt, ob zusätzlich zum roten Statusbalken
+       ein Alarmton abgespielt wird. Gespeichert wird der Modus,
+       der alte Stummschalter wird beim ersten Start migriert. */
+
+    const MODE_STORE_KEY = 'fmsAlertMode';
+    const LEGACY_MUTED_STORE_KEY = 'fmsAlertMuted';
+
+    const MODE_AUDIO = 'audio';
+    const MODE_VISUAL = 'visual';
 
     /* Der Global-Mute-Schalter der Seite ist an diesem Icon zu erkennen.
        Unsere eigene Anzeige nutzt abweichend 'text-sm sm:text-sm' und wird
@@ -29,8 +38,23 @@
     const GLOBAL_MUTE_ICON_CLASS = 'fa-volume-xmark';
     const GLOBAL_MUTE_ICON_COLOR_CLASS = 'text-white/80';
 
+    /* Anker-Icons der Statusleiste im Kopf der Seite. Der Container
+       darüber wird gesucht, damit der Sprechwunsch-Balken direkt
+       darunter eingehängt werden kann. */
+    const STATUS_ANCHOR_ICONS = [
+        'fa-money-bill',
+        'fa-arrow-trend-down',
+        'fa-star'
+    ];
+
+    const STATUS_MIN_ANCHORS = 2;
+
     const BUTTON_CLASS = 'afilia-fms-alert-button';
     const BUTTON_ACTIVE_CLASS = 'afilia-fms-alert-button-active';
+    const BUTTON_AUDIO_CLASS = 'afilia-fms-alert-button-audio';
+    const BUTTON_VISUAL_CLASS = 'afilia-fms-alert-button-visual';
+    const BUTTON_SILENT_CLASS = 'afilia-fms-alert-button-silent';
+    const STATUS_CLASS = 'afilia-fms-alert-status';
     const STYLES_ID = 'afilia-applet-fms-alert-styles';
 
     let api = null;
@@ -41,10 +65,13 @@
 
     let lastButtonRail = null;
 
+    let statusBar = null;
+    let lastStatusHost = null;
+
     let isActive = false;
-    let isMuted = false;
     let isBlocked = false;
     let isGlobalMute = false;
+    let mode = MODE_AUDIO;
 
     /* =========================================================
        Styles
@@ -61,7 +88,7 @@
 
         style.textContent = `
             .${BUTTON_CLASS} {
-                border-color: rgba(239, 68, 68, 0.55);
+                border-color: rgba(239, 68, 68, 0.35);
             }
 
             .${BUTTON_CLASS}:hover {
@@ -72,19 +99,47 @@
                 color: #fca5a5;
             }
 
+            .${BUTTON_VISUAL_CLASS} {
+                border-color: rgba(113, 113, 122, 0.6);
+            }
+
+            .${BUTTON_VISUAL_CLASS} i {
+                color: #a1a1aa;
+            }
+
+            .${BUTTON_AUDIO_CLASS} {
+                border-color: rgba(239, 68, 68, 0.55);
+            }
+
+            .${BUTTON_AUDIO_CLASS} i {
+                color: #fca5a5;
+            }
+
             .${BUTTON_ACTIVE_CLASS} {
                 border-color: #ef4444;
                 box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
             }
 
-            .${BUTTON_ACTIVE_CLASS} i {
+            .${BUTTON_ACTIVE_CLASS}.${BUTTON_AUDIO_CLASS} i {
                 color: #ef4444;
                 animation: afilia-fms-alert-pulse 1.4s ease-in-out infinite;
             }
 
-            .${BUTTON_CLASS}[data-afilia-fms-alert-muted="true"] i {
+            .${BUTTON_ACTIVE_CLASS}.${BUTTON_VISUAL_CLASS} i {
+                color: #ef4444;
+            }
+
+            /* Stiller Alarm: eigener Mute oder globaler Mute des
+               Spiels. Gleiche Spezifitaet wie die Regeln darueber,
+               steht aber weiter hinten und gewinnt daher. */
+
+            .${BUTTON_CLASS}.${BUTTON_SILENT_CLASS} i {
                 color: #71717a;
                 animation: none;
+            }
+
+            .${BUTTON_CLASS}.${BUTTON_SILENT_CLASS} {
+                border-color: rgba(113, 113, 122, 0.6);
             }
 
             @keyframes afilia-fms-alert-pulse {
@@ -94,6 +149,32 @@
 
                 50% {
                     opacity: 0.35;
+                }
+            }
+
+            .${STATUS_CLASS} {
+                width: 100%;
+                margin-top: 6px;
+                border: 1px solid rgba(239, 68, 68, 0.45);
+                border-radius: 8px;
+                background: rgba(239, 68, 68, 0.12);
+                box-shadow: 0 0 12px rgba(239, 68, 68, 0.18);
+                animation: afilia-fms-alert-status-glow 1.4s ease-in-out infinite;
+            }
+
+            .${STATUS_CLASS} i {
+                animation: afilia-fms-alert-pulse 1.4s ease-in-out infinite;
+            }
+
+            @keyframes afilia-fms-alert-status-glow {
+                0%, 100% {
+                    border-color: rgba(239, 68, 68, 0.45);
+                    background: rgba(239, 68, 68, 0.12);
+                }
+
+                50% {
+                    border-color: rgba(239, 68, 68, 0.95);
+                    background: rgba(239, 68, 68, 0.28);
                 }
             }
         `;
@@ -181,8 +262,42 @@
         return audio;
     }
 
+    /* Unser Alarm bleibt stumm, wenn wir selbst auf 'nur visuell'
+       stehen oder das Spiel global stummgeschaltet ist. Das unterdrueckt
+       ausschliesslich den Ton des Applets - der Mute-Schalter des
+       Spiels wird dabei nie veraendert, und der visuelle Balken in der
+       Statusleiste bleibt in beiden Faellen sichtbar. */
+
+    function isSilent() {
+        return !isAudioEnabled() || (isBlocked && mode === MODE_AUDIO);
+    }
+
+    /* Das Icon zeigt an, WARUM es stumm ist: der globale Mute des
+       Spiels schlaegt unsere eigene Einstellung, damit man nicht
+       einen Alarm fuer eingeschaltet haelt, der gar nicht laeuft. */
+
+    function getButtonIconClass() {
+        if (isGlobalMute) {
+            return 'fa-solid fa-volume-xmark text-sm sm:text-sm';
+        }
+
+        if (mode === MODE_VISUAL) {
+            return 'fa-solid fa-bell-slash text-sm sm:text-sm';
+        }
+
+        if (isBlocked) {
+            return 'fa-solid fa-volume-xmark text-sm sm:text-sm';
+        }
+
+        return 'fa-solid fa-bell text-sm sm:text-sm';
+    }
+
+    function isAudioEnabled() {
+        return mode === MODE_AUDIO && !isGlobalMute;
+    }
+
     function playAlert() {
-        if (!audio || isMuted || isGlobalMute) {
+        if (!audio || !isAudioEnabled()) {
             return;
         }
 
@@ -248,7 +363,7 @@
     function scheduleRepeat() {
         stopRepeat();
 
-        if (!isActive || isGlobalMute) {
+        if (!isActive || !isAudioEnabled()) {
             return;
         }
 
@@ -287,6 +402,7 @@
         }
 
         updateButton();
+        hookStatusBar();
     }
 
     function syncState() {
@@ -345,20 +461,56 @@
         }
     }
 
-    async function setMuted(muted) {
-        isMuted = !!muted;
+    async function loadMode() {
+        try {
+            const stored = await api.dbGet(MODE_STORE_KEY);
 
-        if (isMuted) {
+            if (stored === MODE_AUDIO || stored === MODE_VISUAL) {
+                return stored;
+            }
+
+            /* Erster Start nach dem Update: der alte
+               Stummschalter wird in einen Modus überführt. */
+
+            const legacy = await api.dbGet(LEGACY_MUTED_STORE_KEY);
+
+            if (legacy === true || legacy === false) {
+                return legacy ? MODE_VISUAL : MODE_AUDIO;
+            }
+        } catch (error) {
+            console.warn(
+                '[Afilia Toolbox] FMS-Alarm Modus nicht lesbar:',
+                error
+            );
+        }
+
+        return MODE_AUDIO;
+    }
+
+    async function setMode(nextMode) {
+        if (nextMode !== MODE_AUDIO && nextMode !== MODE_VISUAL) {
+            return;
+        }
+
+        mode = nextMode;
+
+        if (!isAudioEnabled()) {
+            stopRepeat();
+
             stopAudio();
+        } else if (isActive) {
+            playAlert();
+
+            scheduleRepeat();
         }
 
         updateButton();
 
         try {
-            await api.dbSet(MUTED_STORE_KEY, isMuted);
+            await api.dbSet(MODE_STORE_KEY, mode);
         } catch (error) {
             console.warn(
-                '[Afilia Toolbox] FMS-Alarm Stummschaltung nicht gespeichert:',
+                '[Afilia Toolbox] FMS-Alarm Modus nicht gespeichert:',
                 error
             );
         }
@@ -409,15 +561,13 @@
            erfolgt ist. Der erste Klick entsperrt das Audio.
            ------------------------------------------------------------ */
 
-        if (isBlocked) {
+        if (mode === MODE_AUDIO && isBlocked) {
             unlockAudio();
 
             return;
         }
 
-        if (isActive) {
-            setMuted(!isMuted);
-        }
+        setMode(mode === MODE_AUDIO ? MODE_VISUAL : MODE_AUDIO);
     }
 
     function unlockAudio() {
@@ -425,7 +575,7 @@
             return;
         }
 
-        if (isMuted || isGlobalMute) {
+        if (!isAudioEnabled()) {
             isBlocked = false;
 
             updateButton();
@@ -460,19 +610,33 @@
         updateButton();
     }
 
-    function shouldShowButton() {
-        return isActive || isBlocked;
-    }
-
     function setAttributeIfChanged(element, name, value) {
         if (element.getAttribute(name) !== value) {
             element.setAttribute(name, value);
         }
     }
 
-    /* Nur tatsächlich geänderte Attribute schreiben. Der Kernskript-
-       Observer lauscht auf class/style und würde sonst jeden Scan
-       erneut auslösen. */
+    function getButtonTitle() {
+        if (mode === MODE_AUDIO && isBlocked) {
+            return 'Ton freigeben – Klicken, damit der FMS-Alarm wiedergegeben werden darf';
+        }
+
+        if (isGlobalMute) {
+            return 'Global stummgeschaltet – FMS-Alarm bleibt ohne Ton. Klicken, um zwischen Ton und rein visueller Warnung zu wechseln';
+        }
+
+        if (mode === MODE_VISUAL) {
+            return 'FMS-Alarm ohne Ton – nur der rote Balken warnt dich. Klicken, um wieder den Alarmton zu aktivieren';
+        }
+
+        if (isActive) {
+            return 'FMS-Alarm mit Ton aktiv – alle 5 Minuten, solange eine Meldung anliegt. Klicken, um nur noch visuell zu warnen';
+        }
+
+        return 'FMS-Alarm mit Ton – alle 5 Minuten, solange eine Meldung anliegt. Klicken, um nur noch visuell zu warnen';
+    }
+
+    /* Nur tatsächlich geänderte Attribute schreiben. */
 
     function updateButton() {
         const button = document.querySelector(
@@ -483,42 +647,60 @@
             return;
         }
 
-        if (!shouldShowButton()) {
-            button.remove();
-
-            return;
-        }
-
         const icon = button.querySelector('i');
 
         if (icon) {
-            const iconClass = isBlocked || isGlobalMute
-                ? 'fa-solid fa-volume-xmark text-sm sm:text-sm'
-                : 'fa-solid fa-bell text-sm sm:text-sm';
-
-            setAttributeIfChanged(icon, 'class', iconClass);
+            setAttributeIfChanged(
+                icon,
+                'class',
+                getButtonIconClass()
+            );
         }
 
-        if (button.classList.contains(BUTTON_ACTIVE_CLASS) !== isActive) {
-            button.classList.toggle(BUTTON_ACTIVE_CLASS, isActive);
-        }
+        /* classList.toggle mit Sollwert fasst nichts an, wenn der
+           Zustand schon passt - der Kernskript-Observer lauscht auf
+           class/style und würde sonst jeden Scan erneut auslösen. */
+
+        button.classList.toggle(BUTTON_ACTIVE_CLASS, isActive);
+
+        const isAudioMode = mode === MODE_AUDIO;
+
+        button.classList.toggle(BUTTON_AUDIO_CLASS, isAudioMode);
+
+        button.classList.toggle(BUTTON_VISUAL_CLASS, !isAudioMode);
+
+        button.classList.toggle(BUTTON_SILENT_CLASS, isSilent());
 
         setAttributeIfChanged(
             button,
-            'data-afilia-fms-alert-muted',
-            isMuted ? 'true' : 'false'
+            'data-afilia-fms-alert-mode',
+            mode
+        );
+
+        setAttributeIfChanged(
+            button,
+            'data-afilia-fms-alert-silent',
+            isSilent() ? 'true' : 'false'
+        );
+
+        setAttributeIfChanged(
+            button,
+            'data-afilia-fms-alert-active',
+            isActive ? 'true' : 'false'
+        );
+
+        setAttributeIfChanged(
+            button,
+            'aria-label',
+            isActive
+                ? 'FMS 5 Sprechwunsch aktiv'
+                : 'FMS 5 Alarm'
         );
 
         setAttributeIfChanged(
             button,
             'title',
-            isBlocked
-                ? 'Ton freigeben – Klicken, damit der FMS-Alarm wiedergegeben werden darf'
-                : isGlobalMute
-                    ? 'Global stummgeschaltet – FMS-Alarm bleibt ohne Ton'
-                    : isMuted
-                        ? 'FMS-Alarm stummgeschaltet – Klicken zum Anmelden'
-                        : 'FMS-Alarm aktiv – alle 5 Minuten, solange eine Meldung anliegt'
+            getButtonTitle()
         );
     }
 
@@ -545,10 +727,6 @@
             existing.remove();
         }
 
-        if (!shouldShowButton()) {
-            return;
-        }
-
         const button = createButton();
 
         const spacer = rail.querySelector(':scope > div.h-20');
@@ -563,17 +741,134 @@
     }
 
     /* =========================================================
+       Statusleiste im Seitenkopf
+       ========================================================= */
+
+    /* Die Statusleiste des Spiels nutzt wechselnde Build-Hash-Klassen
+       (jsx-...). Verankert wird deshalb an den Icons der Einträge:
+       gesucht wird die gemeinsame Zeile und darüber der Container. */
+
+    function countStatusAnchors(row) {
+        return STATUS_ANCHOR_ICONS.filter(iconClass => {
+            return row.querySelector(`i.${iconClass}`);
+        }).length;
+    }
+
+    function findStatusRow(icon) {
+        let node = icon.parentElement;
+
+        while (node && node !== document.body) {
+            if (node.classList.contains('flex-row')) {
+                /* Nur die eigentliche Statuszeile, nicht irgendein
+                   darüberliegender Flex-Container. */
+                return countStatusAnchors(node) >= STATUS_MIN_ANCHORS
+                    ? node
+                    : null;
+            }
+
+            node = node.parentElement;
+        }
+
+        return null;
+    }
+
+    function findStatusHost() {
+        for (const iconClass of STATUS_ANCHOR_ICONS) {
+            const icons = document.querySelectorAll(`i.${iconClass}`);
+
+            for (const icon of icons) {
+                const row = findStatusRow(icon);
+
+                const host = row ? row.parentElement : null;
+
+                if (host && host !== document.body) {
+                    return host;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function createStatusBar() {
+        const bar = document.createElement('div');
+
+        bar.className =
+            `${STATUS_CLASS} flex flex-row items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md`;
+
+        bar.setAttribute('role', 'status');
+        bar.setAttribute('aria-live', 'polite');
+
+        bar.innerHTML = `
+            <i class="fa-solid fa-bell text-red-400 text-xs sm:text-base"></i>
+
+            <div class="flex flex-col items-center leading-none sm:leading-tight">
+                <span class="text-[9px] sm:text-[10px] text-red-300">
+                    FMS 5
+                </span>
+
+                <span class="font-semibold text-white">
+                    Sprechwunsch!
+                </span>
+            </div>
+        `;
+
+        return bar;
+    }
+
+    function removeStatusBar() {
+        /* Nicht nur die zuletzt eingefügte Instanz entfernen: baut das
+           Spiel den Kopfbereich per Clone neu auf, existiert unser
+           Balken sonst doppelt. */
+
+        document
+            .querySelectorAll(`.${STATUS_CLASS}`)
+            .forEach(bar => bar.remove());
+
+        statusBar = null;
+        lastStatusHost = null;
+    }
+
+    function hookStatusBar() {
+        if (!isActive) {
+            removeStatusBar();
+
+            return;
+        }
+
+        const host = findStatusHost();
+
+        if (!host) {
+            return;
+        }
+
+        /* Das Spiel baut den Kopfbereich gelegentlich neu auf. */
+
+        if (
+            statusBar &&
+            host === lastStatusHost &&
+            host.nextElementSibling === statusBar
+        ) {
+            return;
+        }
+
+        removeStatusBar();
+
+        lastStatusHost = host;
+
+        statusBar = createStatusBar();
+
+        host.after(statusBar);
+    }
+
+    /* =========================================================
        Applet lifecycle
        ========================================================= */
 
     async function init(context) {
         api = context;
 
-        try {
-            isMuted = (await api.dbGet(MUTED_STORE_KEY)) === true;
-        } catch (error) {
-            isMuted = false;
-        }
+        mode = await loadMode();
 
         injectStyles();
 
@@ -590,6 +885,8 @@
         hookButton();
 
         syncState();
+
+        hookStatusBar();
     }
 
     function dispose() {
@@ -612,12 +909,19 @@
             .querySelectorAll(`.${BUTTON_CLASS}`)
             .forEach(button => button.remove());
 
+        document
+            .querySelectorAll(`.${STATUS_CLASS}`)
+            .forEach(bar => bar.remove());
+
         document.getElementById(STYLES_ID)?.remove();
 
         isActive = false;
         isBlocked = false;
         isGlobalMute = false;
         lastButtonRail = null;
+        statusBar = null;
+        lastStatusHost = null;
+        mode = MODE_AUDIO;
         api = null;
     }
 
@@ -628,8 +932,8 @@
         id: 'fmsAlert',
         name: 'FMS-5-Alarm',
         description:
-            'Spielt alle 5 Minuten einen Alarmton ab, solange ein Sprechwunsch vorliegt.',
-        version: '1.0.1',
+            'Warnt bei einem Sprechwunsch mit einem roten Balken in der Statusleiste. Über die Glocke lässt sich zwischen Alarmton und rein visueller Warnung umschalten.',
+        version: '1.1.0',
         init,
         onScan,
         dispose

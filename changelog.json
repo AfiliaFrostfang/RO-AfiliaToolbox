@@ -69,6 +69,11 @@
             ]
         },
         "fmsAlert": {
+            "1.1.0": [
+                "Neu: Bei einem Sprechwunsch erscheint direkt unter der Statusleiste im Seitenkopf ein rot pulsierender Balken mit dem Hinweis „Sprechwunsch!“. Dieser visuelle Hinweis bleibt immer sichtbar.",
+                "Die Glocke ist jetzt dauerhaft sichtbar und schaltet den Alarmton des Applets ein oder aus. Der Ton des Spiels wird nicht verändert.",
+                "Der Stummschalter des Spiels wird weiterhin respektiert: Ist das Spiel global stummgeschaltet, bleibt der FMS-Alarm ohne Ton, der rote Balken aber sichtbar. Die Glocke zeigt dann ein durchgestrichenes Lautsprecher-Icon."
+            ],
             "1.0.1": [
                 "Bugfix: Das Applet respektiert jetzt die globale Stummschaltung des Spiels – der Alarmton wird nicht mehr abgespielt, solange das Spiel stummgeschaltet ist."
             ],
