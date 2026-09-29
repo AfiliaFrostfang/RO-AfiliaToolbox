@@ -56,10 +56,15 @@
     },
     "applets": {
         "aaoCategories": {
+            "1.0.5": [
+                "Bugfix: Eine AAO konnte verschwinden, wenn sie während einer Suche einer Kategorie zugeordnet wurde. Die Mitschrift hat die Suchergebnisse ein zweites Mal selbst gefiltert – und dabei nur Name und Kurzbeschreibung berücksichtigt. Das Spiel sucht über mehr Felder, deshalb war eine vom Spiel gefundene AAO in der Mitschrift unsichtbar. Es gilt jetzt unmittelbar, was das Spiel gerade anzeigt.",
+                "Der Suchbegriff wird jetzt immer aus dem Feld des Spiels gelesen und nicht mehr zwischengespeichert. Vorher konnte ein Begriff stehen bleiben, den das Spiel schon gar nicht mehr anwendet – die Folge war, dass die Mitschrift die gerade gesuchten AAOs aus dem Katalog räumte.",
+                "Technik: Die Liste der AAOs wird jetzt eindeutig über den Button „Neue AAO anlegen“ bestimmt. Das Formular zum Anlegen ist damit von der Liste ausgeschlossen und kann sie nicht mehr verdecken.",
+                "Die Mitschrift wird nicht mehr jedes Mal geleert, wenn der Einstellungs-Dialog geschlossen wird oder die Liste gerade neu aufgebaut wird."
+            ],
             "1.0.4": [
                 "Bugfix: Neu angelegte AAOs sind in den Einstellungen sofort wieder verschwunden. Das Applet hat die AAO-Liste anhand ihrer Beschriftungen gesucht und dabei das Formular „Neue AAO anlegen“ für die Liste selbst gehalten. Die Liste wird jetzt eindeutig über den Button „Neue AAO anlegen“ bestimmt.",
-                "Das Suchfeld der Liste wird nicht mehr verwechselt: Früher konnte das Namensfeld des Formulars als Suchfeld der Liste gelten, dann blieb der eingegebene Name als Filter stehen und die Mitschrift zeigte nur noch einen Treffer.",
-                "Die Mitschrift wird nicht mehr jedes Mal geleert, wenn der Einstellungs-Dialog geschlossen wird oder die Liste gerade neu aufgebaut wird."
+                "Das Suchfeld der Liste wird nicht mehr verwechselt: Früher konnte das Namensfeld des Formulars als Suchfeld der Liste gelten, dann blieb der eingegebene Name als Filter stehen und die Mitschrift zeigte nur noch einen Treffer."
             ],
             "1.0.3": [
                 "Das native AAO Fenster in den Einstellungen wurde umgebaut. Das Applet hat die alte Struktur gesucht und deshalb keine AAOs mehr gefunden: Die Kategorien wurden zwar angezeigt, ließen sich aber weder zuordnen noch bearbeiten. Das Applet passt sich der neuen Liste an und übernimmt deren Suchfeld. Bereits gespeicherte Zuordnungen bleiben erhalten, auch wenn sich die Class der Liste des Spiels gerade nicht auslesen lässt."

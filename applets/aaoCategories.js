@@ -55,12 +55,15 @@
     const selectedAAOs = new Set();
     const originalAAORows = new Map();
 
+    /* Keys der AAOs, die das Spiel in den Einstellungen gerade
+       anzeigt. Waehrend einer Suche ist das der gefilterte
+       Ausschnitt und damit die Antwort auf die Suchfrage. */
+    let visibleSettingsAAOKeys = new Set();
+
     let lastDispatchContainer = null;
     let lastSettingsSection = null;
 
     let dispatchSearchValue = '';
-    let settingsSearchValue = '';
-    let hookedSettingsSearchInput = null;
     let draggedCategoryID = null;
     let draggedAAOKey = null;
     let uncategorizedAAOOrder = [];
@@ -1103,6 +1106,13 @@
                 }
             }
 
+            /* Was das Spiel gerade anzeigt, ist die Antwort auf
+               eine laufende Suche. Der Katalog behaelt weiterhin
+               alle AAOs, nur dieser Ausschnitt bestimmt, was
+               sichtbar ist. */
+
+            visibleSettingsAAOKeys = seenSettingsKeys;
+
             /* -----------------------------------------------------
                Katalogeintraege entfernen, die nicht mehr in der
                nativen Liste stehen.
@@ -1125,7 +1135,7 @@
                 findSettingsSearchInput() !== null;
 
             const canPrune = listIsAuthoritative &&
-                !settingsSearchValue.trim();
+                !getSettingsSearchValue().trim();
 
             if (canPrune) {
                 for (const [key, aao] of aaoCatalog) {
@@ -1152,7 +1162,15 @@
            Dialogs leer und die Mitschrift wuerde flackern.
            Aufgeraeumt wird erst wieder, wenn die Liste lesbar
            ist und keine Zuordnung mehr zu ihr gehoert.
+
+           Der sichtbare Ausschnitt wird dann geleert: es steht
+           nichts Sicheres mehr fest, und eine Suche darf keine
+           Zeilen zeigen, die es nicht gibt.
            ----------------------------------------------------- */
+
+        if (!settingsContainer) {
+            visibleSettingsAAOKeys = new Set();
+        }
 
         /* -----------------------------------------------------
            Dispatch AAOs
@@ -1401,18 +1419,29 @@
     }
 
     /* =========================================================
-       Dispatch category UI
+       Category UI
        ========================================================= */
 
-    function matchesSearch(aao, search) {
+    /* -----------------------------------------------------
+       Waehrend einer Suche entscheidet allein das Spiel, was
+       gefunden wurde – es blendet seine Zeilen ja selbst aus.
+       Die Mitschrift filtert deshalb nicht noch einmal mit
+       eigenem Text, sondern zeigt genau die Zeilen, die das
+       Spiel gerade stehen laesst.
+
+       Ein eigener Textvergleich waere eine zweite, schlechtere
+       Kopie derselben Filterung: das Spiel sucht ueber mehr
+       Felder als Name und Kurzbeschreibung. Was es findet,
+       fehlte in der Mitschrift, und die AAO war weg, sobald
+       sie aus „Nicht zugeordnet“ in eine Kategorie wanderte.
+       ----------------------------------------------------- */
+
+    function matchesSettingsList(aao, search) {
         if (!search) {
             return true;
         }
 
-        return (
-            aao.name.toLowerCase().includes(search) ||
-            aao.summary.toLowerCase().includes(search)
-        );
+        return visibleSettingsAAOKeys.has(aao.key);
     }
 
     function sortAAOs(aaos, order) {
@@ -1966,7 +1995,7 @@
            Categories
            ----------------------------------------------------- */
 
-        const search = settingsSearchValue.trim().toLowerCase();
+        const search = getSettingsSearchValue().trim();
 
         for (const category of categories) {
             const section = document.createElement('div');
@@ -2101,7 +2130,7 @@
             const aaos = sortAAOs(
                 Array.from(aaoCatalog.values()).filter(aao => {
                     return assignments[aao.key] === category.id &&
-                        matchesSearch(aao, search);
+                        matchesSettingsList(aao, search);
                 }),
                 category.aaoOrder
             );
@@ -2201,7 +2230,7 @@
            ----------------------------------------------------- */
 
         const uncategorized = getUncategorizedAAOs().filter(aao => {
-            return matchesSearch(aao, search);
+            return matchesSettingsList(aao, search);
         });
 
         if (search && uncategorized.length === 0) {
@@ -2210,7 +2239,7 @@
             hint.className = 'afilia-settings-empty-hint';
 
             hint.textContent =
-                `Keine AAO gefunden für „${settingsSearchValue.trim()}".`;
+                `Keine AAO gefunden für „${getSettingsSearchValue().trim()}".`;
 
             panel.appendChild(hint);
         }
@@ -2504,37 +2533,46 @@
        das Feld selbst bleibt sichtbar.
        ----------------------------------------------------- */
 
-    function hookSettingsSearch() {
+    /* -----------------------------------------------------
+       Der Suchbegriff wird immer aus dem Feld des Spiels
+       gelesen, nie in einer eigenen Variable gehalten.
+
+       Das Spiel baut sein Feld beim Filtern neu auf. Eine
+       eigene Variable laege dann zurueck, waehrend das Spiel
+       weiterhin filtert – die Mitschrift glaubte, es werde
+       nicht gesucht, raeumte den Katalog auf und loeschte
+       genau die AAOs, die gerade gesucht wurden. Der Begriff
+       kommt deshalb direkt aus dem Feld, das der Spieler
+       sieht.
+       ----------------------------------------------------- */
+
+    function getSettingsSearchValue() {
         const input = findSettingsSearchInput();
 
-        /* -----------------------------------------------------
-           Wechselt das Suchfeld, weil das Spiel den Dialog neu
-           aufbaut, muss der alte Begriff verschwinden. Bliebe
-           er stehen, filterte die Mitschrift dauerhaft nach
-           einem Wert, den niemand mehr sieht – und der Katalog
-           wuerde nie mehr bereinigt.
-           ----------------------------------------------------- */
+        return input ? (input.value || '') : '';
+    }
 
-        if (hookedSettingsSearchInput &&
-            hookedSettingsSearchInput !== input) {
-            hookedSettingsSearchInput = null;
-            settingsSearchValue = '';
-        }
+    function hookSettingsSearch() {
+        const input = findSettingsSearchInput();
 
         if (!input) {
             return;
         }
 
         if (input.dataset.afiliaSearchHooked === 'true') {
-            hookedSettingsSearchInput = input;
             return;
         }
 
         input.dataset.afiliaSearchHooked = 'true';
-        hookedSettingsSearchInput = input;
 
         input.addEventListener('input', () => {
-            settingsSearchValue = input.value || '';
+            /* Das Spiel blendet seine Zeilen erst nach diesem
+               Ereignis aus. Die native Liste wird deshalb hier
+               noch einmal gelesen, statt auf den Beobachter zu
+               warten – sonst zeigte die Mitschrift kurzzeitig
+               ein Ergebnis, das das Spiel gar nicht anzeigt. */
+
+            discoverAAOs();
 
             renderSettingsPanel();
         });
@@ -2610,8 +2648,6 @@
             }
         } else {
             lastSettingsSection = null;
-            settingsSearchValue = '';
-            hookedSettingsSearchInput = null;
 
             document.querySelector(
                 `#${AAO_SETTINGS_PANEL_ID}`
@@ -2696,8 +2732,6 @@
         lastDispatchContainer = null;
         lastSettingsSection = null;
         dispatchSearchValue = '';
-        settingsSearchValue = '';
-        hookedSettingsSearchInput = null;
         draggedCategoryID = null;
         draggedAAOKey = null;
         uncategorizedAAOOrder = [];
@@ -2713,7 +2747,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.4',
+        version: '1.0.5',
         init,
         onScan,
         dispose
