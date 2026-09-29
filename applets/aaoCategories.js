@@ -539,14 +539,6 @@
        AAO discovery
        ========================================================= */
 
-    function getAAOContainers() {
-        return Array.from(
-            document.querySelectorAll(
-                '[data-slot="sortable-content"]'
-            )
-        );
-    }
-
     function isSettingsAAOContainer(container) {
         if (!container) {
             return false;
@@ -557,10 +549,28 @@
         );
     }
 
+    /* -----------------------------------------------------
+       Die native AAO-Liste wird nur im Einstellungs-Dialog
+       gesucht. Das Alarmierungsfenster rendert seine
+       AAO-Karten mit identischem dnd-kit-Markup. Ohne diese
+       Einschränkung liefert der erste Treffer im Dokument
+       die Liste des falschen Fensters: Die Karten dort
+       enthalten kein „span.font-semibold", der Katalog
+       bleibt leer und die Zuordnungen werden verworfen.
+       ----------------------------------------------------- */
+
     function findSettingsAAOContainer() {
-        return getAAOContainers().find(
-            isSettingsAAOContainer
-        ) || null;
+        const dialog = findSettingsDialog();
+
+        if (!dialog) {
+            return null;
+        }
+
+        return Array.from(
+            dialog.querySelectorAll(
+                '[data-slot="sortable-content"]'
+            )
+        ).find(isSettingsAAOContainer) || null;
     }
 
     function findSettingsDialog() {
@@ -897,22 +907,30 @@
                 }
             }
 
-            for (const [key, aao] of aaoCatalog) {
-                if (
-                    aao.source === 'settings' &&
-                    !seenSettingsKeys.has(key)
-                ) {
-                    aaoCatalog.delete(key);
-                    originalAAORows.delete(key);
-                    selectedAAOs.delete(key);
+            /* -----------------------------------------------------
+               Katalogeintraege entfernen, die nicht mehr in der
+               nativen Liste stehen.
 
-                    if (assignments[key]) {
-                        delete assignments[key];
+               Zuordnungen werden dabei NIE geloescht. Laesst
+               sich die Liste nicht parsen, ist das ein Fehlalarm
+               und wuerde saemtliche Zuordnungen vernichten –
+               danach laesst sich keine AAO mehr kategorisieren.
+               Verwaiste Zuordnungen sind harmlos, weil sie nur
+               ueber den Katalog ausgewertet werden.
+               ----------------------------------------------------- */
 
-                        saveAssignments().catch(console.error);
+            if (seenSettingsKeys.size > 0) {
+                for (const [key, aao] of aaoCatalog) {
+                    if (
+                        aao.source === 'settings' &&
+                        !seenSettingsKeys.has(key)
+                    ) {
+                        aaoCatalog.delete(key);
+                        originalAAORows.delete(key);
+                        selectedAAOs.delete(key);
+
+                        changed = true;
                     }
-
-                    changed = true;
                 }
             }
         } else {
