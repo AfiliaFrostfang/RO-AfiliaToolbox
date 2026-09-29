@@ -13,19 +13,35 @@
     const STYLES_ID = 'afilia-applet-aao-styles';
 
     /* -----------------------------------------------------
-       Anker der nativen AAO-Liste. Der Button existiert
-       immer, auch in einem neuen Spiel ohne jede AAO, und
-       steht im selben Container wie Suchfeld und Zeilen.
-       Ohne diesen Anker griff die Suche nach dem ersten
-       „div.space-y-2" mit einer fett gedruckten Beschriftung
-       – das Formular „Neue AAO anlegen" erfuellt diese
-       Bedingung ebenso und steht weiter oben im Dokument.
-       Dadurch wurde die echte Liste ueberschrieben, ihre
-       Zeilen geloescht und der Katalog auf die Formularfelder
-       reduziert: neu angelegte AAOs verschwanden sofort.
+       Anker der nativen AAO-Liste, belegt am echten Markup.
+
+       Die Liste ist ein „div[data-slot=sortable-content]", und
+       ihre Zeilen sind dessen direkte Kinder
+       „div[data-slot=sortable-item]". Jede Zeile traegt den
+       Ziehgriff „button[data-slot=sortable-item-handle]"
+       mit dem Titel „AAO verschieben".
+
+       Wichtig: Suchfeld und Button „Neue AAO anlegen" sind
+       Geschwister des Listen-Containers, keine Kinder. Ein
+       Anker ueber den Button – von ihm aus die Vorfahren
+       nach „div.space-y-2" durchsuchen – erreicht die Liste
+       darum nie und liefert konstant null. Genau daran ist
+       zuletzt alles gescheitert: ohne Container blieb der
+       Katalog leer und es passierte gar nichts mehr.
+
+       Das Formular „Neue AAO" benutzt denselben
+       sortable-Mechanismus, seine „sortable-item"-Knoten
+       tragen aber keinen Ziehgriff mit dem Titel
+       „AAO verschieben". Nur die Kombination aus
+       data-slot und diesem Titel trennt Liste und Formular
+       zuverlaessig voneinander.
        ----------------------------------------------------- */
 
-    const SETTINGS_CREATE_BUTTON_LABEL = 'Neue AAO anlegen';
+    const SETTINGS_LIST_SELECTOR = '[data-slot="sortable-content"]';
+    const SETTINGS_ROW_SELECTOR = 'div[data-slot="sortable-item"]';
+    const SETTINGS_ROW_HANDLE_SELECTOR =
+        '[data-slot="sortable-item-handle"][title="AAO verschieben"]';
+    const SETTINGS_CREATE_FORM_HEADING = 'Neue AAO';
     const SETTINGS_SECTION_HEADING = 'Alarm- und Ausrückeordnung';
 
     const DEFAULT_CATEGORIES = [
@@ -59,6 +75,16 @@
        anzeigt. Waehrend einer Suche ist das der gefilterte
        Ausschnitt und damit die Antwort auf die Suchfrage. */
     let visibleSettingsAAOKeys = new Set();
+
+    /* -----------------------------------------------------
+       Signature des sichtbaren Ausschnitts. Eine Suche aendert
+       den Katalog nicht, nur seinen Ausschnitt – ohne diese
+       Merkung faellt die Aenderung beim Neuzeichnen auf, weil
+       sich der Katalog selbst nicht bewegt hat, und das Panel
+       zeigte weiter alle AAOs.
+       ----------------------------------------------------- */
+    let lastVisibleSettingsSignature = null;
+    let visibleSettingsChanged = false;
 
     let lastDispatchContainer = null;
     let lastSettingsSection = null;
@@ -563,12 +589,11 @@
     /* -----------------------------------------------------
        Native AAO-Liste in den Einstellungen.
 
-       Das Spiel rendert die Liste inzwischen ohne dnd-kit:
-       ein Container „div.space-y-2" mit Suchfeld, dem Button
-       „Neue AAO anlegen" und den AAO-Zeilen. Gesucht wird
-       deshalb anhand der Zeilen selbst und ausschliesslich
-       im Einstellungs-Dialog, damit weder die Aktionen der
-       Zeilen noch die Suche des Spiels mitgefiltert werden.
+       Erkannt wird ausschliesslich an den Zeilen selbst: nur
+       sie tragen den Ziehgriff mit dem Titel
+       „AAO verschieben". Der Dialog wird dazu nicht
+       ausgewertet, damit weder die Aktionen der Zeilen noch
+       die Suche des Spiels mitgefiltert werden.
        ----------------------------------------------------- */
 
     function getSettingsAAORowNameElement(row) {
@@ -579,24 +604,8 @@
         return row.querySelector('span.font-semibold');
     }
 
-    /* -----------------------------------------------------
-       Eine Zeile ist rein anzeigend: sie enthaelt Name,
-       Kurzbeschreibung sowie die Buttons zum Bearbeiten und
-       Loeschen, aber kein Eingabefeld. Das Formular
-       „Neue AAO anlegen" besteht dagegen aus Beschriftungen
-       mit eigenen Eingabefeldern und darf nicht als Zeile
-       missverstanden werden – sonst verschwinden die echten
-       AAOs aus dem Katalog.
-       ----------------------------------------------------- */
-
-    function containsFormControl(element) {
-        return !!element.querySelector(
-            'form, input, textarea, select'
-        );
-    }
-
     function isSettingsAAORow(element) {
-        if (!element || !element.matches('div')) {
+        if (!element || !element.matches(SETTINGS_ROW_SELECTOR)) {
             return false;
         }
 
@@ -604,7 +613,11 @@
             return false;
         }
 
-        if (containsFormControl(element)) {
+        if (!element.querySelector(SETTINGS_ROW_HANDLE_SELECTOR)) {
+            return false;
+        }
+
+        if (element.querySelector('form, input, textarea, select')) {
             return false;
         }
 
@@ -621,53 +634,52 @@
         );
     }
 
-    function findSettingsAAOCreateButton(root) {
+    function getSettingsLists(root) {
         if (!root) {
+            return [];
+        }
+
+        return Array.from(root.querySelectorAll(SETTINGS_LIST_SELECTOR));
+    }
+
+    /* -----------------------------------------------------
+       Das Formular „Neue AAO" ersetzt die Listenansicht. Dann
+       gibt es zwar sortable-Knoten, aber keine AAO-Zeilen.
+       In diesem Zustand darf der Katalog nicht geleert und
+       nicht als leer interpretiert werden.
+       ----------------------------------------------------- */
+
+    function findSettingsCreateFormHeading(dialog) {
+        if (!dialog) {
             return null;
         }
 
-        return Array.from(root.querySelectorAll('button')).find(
-            button => {
-                return button.textContent.trim() ===
-                    SETTINGS_CREATE_BUTTON_LABEL;
+        return Array.from(dialog.querySelectorAll('h3')).find(
+            heading => {
+                return heading.textContent.trim() ===
+                    SETTINGS_CREATE_FORM_HEADING;
             }
         ) || null;
     }
 
-    /* -----------------------------------------------------
-       Der Container wird ueber den Button „Neue AAO anlegen"
-       bestimmt. Von dessen Vorfahren werden alle Kandidaten der
-       Klasse „div.space-y-2" innerhalb des Abschnitts
-       gesammelt und von aussen nach innen geprueft: der
-       zuerst gefundene, der die AAO-Zeilen traegt, ist die
-       Liste. Bleibt das Ergebnis leer, gewinnt der innerste
-       Kandidat, damit die Liste auch in einem Spiel ohne jede
-       AAO stabil erkannt wird.
-
-       Der Button ist der einzige Knoten der Liste, der immer
-       vorhanden ist, und grenzt das Formular zum Anlegen sowie
-       alle anderen Beschriftungen des Abschnitts aus. Genau
-       dort lag der Fehler: die Suche nach dem ersten
-       „div.space-y-2" mit einer fett gedruckten Beschriftung
-       traf auch das Formular und vernichtete die Mitschrift
-       der echten Liste.
-       ----------------------------------------------------- */
-
-    function getSettingsAAOContainerCandidates(section, button) {
-        const candidates = [];
-
-        let candidate = button.parentElement;
-
-        while (candidate && candidate !== section) {
-            if (candidate.matches('div.space-y-2')) {
-                candidates.unshift(candidate);
-            }
-
-            candidate = candidate.parentElement;
-        }
-
-        return candidates;
+    function isSettingsCreateFormOpen(dialog) {
+        return !!findSettingsCreateFormHeading(
+            dialog || findSettingsDialog()
+        );
     }
+
+    /* -----------------------------------------------------
+       Gesucht wird der sortable-Container, der echte
+       AAO-Zeilen traegt. Traegt keiner welche, ist die Liste
+       leer – dann wird der erste Container der Ansicht
+       genommen, damit das Panel weiterhin einen stabilen
+       Anker hat und eine leere Liste als leer erkannt wird.
+
+       Fehlt jeder sortable-Container, ist die Liste nicht
+       gerendert: beim Wechsel auf einen anderen Reiter baut
+       das Spiel den Tab-Inhalt ab. Dann liefert die Suche
+       null, ohne den Katalog anzutasten.
+       ----------------------------------------------------- */
 
     function findSettingsAAOContainer() {
         const dialog = findSettingsDialog();
@@ -676,50 +688,53 @@
             return null;
         }
 
-        const section = findSettingsAAOSection() || dialog;
-        const button = findSettingsAAOCreateButton(section);
+        const lists = getSettingsLists(dialog);
 
-        if (!button) {
+        if (lists.length === 0) {
             return null;
         }
 
-        const candidates = getSettingsAAOContainerCandidates(
-            section,
-            button
-        );
-
-        if (candidates.length === 0) {
+        if (isSettingsCreateFormOpen(dialog)) {
             return null;
         }
 
-        return candidates.find(candidate => {
-            return getSettingsAAORows(candidate).length > 0;
-        }) || candidates[candidates.length - 1];
+        return lists.find(list => {
+            return getSettingsAAORows(list).length > 0;
+        }) || lists[0];
     }
 
     function findSettingsSearchInput() {
-        const container = findSettingsAAOContainer();
+        const dialog = findSettingsDialog();
 
-        if (!container) {
+        if (!dialog || isSettingsCreateFormOpen(dialog)) {
             return null;
         }
 
         /* -----------------------------------------------------
-           Nur Eingabefelder der Liste selbst. Das erste Feld im
-           Abschnitt gehoerte vor dem Fix unter Umstaenden zum
-           Formular „Neue AAO anlegen" – der eingegebene Name
-           wuerde dann als Suchbegriff gelten und die
-           Mitschrift auf einen einzigen Treffer filtern.
+           Das Suchfeld ist Geschwister des Listen-Containers,
+           nicht dessen Kind, und liegt deshalb ausserhalb.
+           Gesucht wird daher im Dialog – aber nur in
+           Eingabefeldern, die weder in einer sortable-Liste
+           noch im Formular „Neue AAO" liegen. Andernfalls
+           waere das Titelfeld des Formulars der erste
+           Treffer und der eingegebene Name wuerde als
+           Suchbegriff gelten.
            ----------------------------------------------------- */
 
         const candidates = Array.from(
-            container.querySelectorAll('input')
+            dialog.querySelectorAll('input')
         ).filter(input => {
             if (input.type === 'hidden') {
                 return false;
             }
 
-            return !input.closest('form');
+            if (input.closest(SETTINGS_LIST_SELECTOR)) {
+                return false;
+            }
+
+            return !findSettingsCreateFormHeading(
+                input.closest('div')
+            ) && !input.closest('form');
         });
 
         if (candidates.length === 0) {
@@ -770,11 +785,19 @@
         }
     }
 
+    /* -----------------------------------------------------
+       Der Dialog traegt laut Markup die Kopfzeile
+       „Einstellungen" als „h2[data-slot=sheet-title]" in
+       einem „div[data-slot=sheet-header]". Geprüft wird
+       deshalb „[role=dialog]" und darin der Titeltext, statt
+       sich auf „data-slot=sheet-content" zu verlassen: liegt
+       der Kopf ausserhalb dieses Knotens, wurde der Dialog
+       vorher nicht erkannt und es passierte gar nichts.
+       ----------------------------------------------------- */
+
     function findSettingsDialog() {
         const dialogs = Array.from(
-            document.querySelectorAll(
-                '[role="dialog"][data-slot="sheet-content"]'
-            )
+            document.querySelectorAll('[role="dialog"]')
         );
 
         return dialogs.find(dialog => {
@@ -1112,19 +1135,24 @@
                sichtbar ist. */
 
             visibleSettingsAAOKeys = seenSettingsKeys;
+            markVisibleSettings(seenSettingsKeys);
 
             /* -----------------------------------------------------
                Katalogeintraege entfernen, die nicht mehr in der
                nativen Liste stehen.
 
-               Geraedet wird nur, wenn die Liste am Button
-               „Neue AAO anlegen" festgemacht wurde und
-               nachweislich auslesbar ist: entweder stehen Zeilen
-               darin oder das Suchfeld ist vorhanden. Trifft
-               beides nicht zu, laesst sich ein leerer Abschnitt
-               nicht von einem Lesefehler unterscheiden – dann
-               waere das Entfernen ein Fehlalarm und wuerde die
-               gesamte Mitschrift loeschen.
+               Geraeumt wird nur, wenn der Listen-Container
+               wirklich gefunden wurde und nachweislich
+               auslesbar ist: entweder stehen Zeilen darin oder
+               das Suchfeld ist vorhanden. Traegt der Dialog
+               keinen einzigen sortable-Container, ist die Liste
+               nicht gerendert – dann laesst sich eine leere
+               Liste nicht von einem Reiterwechsel unterscheiden
+               und das Entfernen waere ein Fehlalarm, der die
+               gesamte Mitschrift loescht. Dasselbe gilt fuer
+               das geoeffnete Formular „Neue AAO": es ersetzt
+               die Listenansicht und ist kein Beweis fuer
+               verschwundene AAOs.
 
                Waehrend einer Suche zeigt das Spiel nur einen
                Teil der AAOs, dann darf nichts entfernt werden.
@@ -1170,6 +1198,7 @@
 
         if (!settingsContainer) {
             visibleSettingsAAOKeys = new Set();
+            markVisibleSettings(visibleSettingsAAOKeys);
         }
 
         /* -----------------------------------------------------
@@ -1442,6 +1471,25 @@
         }
 
         return visibleSettingsAAOKeys.has(aao.key);
+    }
+
+    /* -----------------------------------------------------
+       Vermerkt, ob sich der sichtbare Ausschnitt der Liste
+       gegenueber dem letzten Durchlauf veraendert hat. Geaendert
+       hat sich dann nur die Anzeige des Spiels, nicht der
+       Katalog – das Panel muss trotzdem neu gezeichnet
+       werden, sonst bleibt der alte Ausschnitt stehen.
+       ----------------------------------------------------- */
+
+    function markVisibleSettings(keys) {
+        const signature = Array.from(keys).sort().join('\u0000');
+
+        if (signature === lastVisibleSettingsSignature) {
+            return;
+        }
+
+        lastVisibleSettingsSignature = signature;
+        visibleSettingsChanged = true;
     }
 
     function sortAAOs(aaos, order) {
@@ -2613,7 +2661,10 @@
     }
 
     function onScan() {
+        visibleSettingsChanged = false;
+
         const catalogChanged = discoverAAOs();
+        const visibleChanged = visibleSettingsChanged;
 
         /* -----------------------------------------------------
            Settings
@@ -2638,7 +2689,8 @@
             if (
                 !panelPlaced ||
                 settingsSection !== lastSettingsSection ||
-                catalogChanged
+                catalogChanged ||
+                visibleChanged
             ) {
                 lastSettingsSection = settingsSection;
 
@@ -2731,6 +2783,9 @@
 
         lastDispatchContainer = null;
         lastSettingsSection = null;
+        lastVisibleSettingsSignature = null;
+        visibleSettingsAAOKeys = new Set();
+        visibleSettingsChanged = false;
         dispatchSearchValue = '';
         draggedCategoryID = null;
         draggedAAOKey = null;

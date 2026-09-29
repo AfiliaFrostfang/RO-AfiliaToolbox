@@ -59,7 +59,6 @@
             "1.0.5": [
                 "Bugfix: Eine AAO konnte verschwinden, wenn sie während einer Suche einer Kategorie zugeordnet wurde. Die Mitschrift hat die Suchergebnisse ein zweites Mal selbst gefiltert – und dabei nur Name und Kurzbeschreibung berücksichtigt. Das Spiel sucht über mehr Felder, deshalb war eine vom Spiel gefundene AAO in der Mitschrift unsichtbar. Es gilt jetzt unmittelbar, was das Spiel gerade anzeigt.",
                 "Der Suchbegriff wird jetzt immer aus dem Feld des Spiels gelesen und nicht mehr zwischengespeichert. Vorher konnte ein Begriff stehen bleiben, den das Spiel schon gar nicht mehr anwendet – die Folge war, dass die Mitschrift die gerade gesuchten AAOs aus dem Katalog räumte.",
-                "Technik: Die Liste der AAOs wird jetzt eindeutig über den Button „Neue AAO anlegen“ bestimmt. Das Formular zum Anlegen ist damit von der Liste ausgeschlossen und kann sie nicht mehr verdecken.",
                 "Die Mitschrift wird nicht mehr jedes Mal geleert, wenn der Einstellungs-Dialog geschlossen wird oder die Liste gerade neu aufgebaut wird."
             ],
             "1.0.4": [
