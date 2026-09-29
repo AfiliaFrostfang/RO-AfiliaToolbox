@@ -43,6 +43,7 @@
     let lastSettingsSection = null;
 
     let dispatchSearchValue = '';
+    let settingsSearchValue = '';
     let draggedCategoryID = null;
     let draggedAAOKey = null;
     let uncategorizedAAOOrder = [];
@@ -539,25 +540,46 @@
        AAO discovery
        ========================================================= */
 
-    function isSettingsAAOContainer(container) {
-        if (!container) {
+    /* -----------------------------------------------------
+       Native AAO-Liste in den Einstellungen.
+
+       Das Spiel rendert die Liste inzwischen ohne dnd-kit:
+       ein Container „div.space-y-2" mit Suchfeld, dem Button
+       „Neue AAO anlegen" und den AAO-Zeilen. Gesucht wird
+       deshalb anhand der Zeilen selbst und ausschliesslich
+       im Einstellungs-Dialog, damit weder die Aktionen der
+       Zeilen noch die Suche des Spiels mitgefiltert werden.
+       ----------------------------------------------------- */
+
+    function getSettingsAAORowNameElement(row) {
+        if (!row) {
+            return null;
+        }
+
+        return row.querySelector('span.font-semibold');
+    }
+
+    function isSettingsAAORow(element) {
+        if (!element || !element.matches('div')) {
             return false;
         }
 
-        return !!container.querySelector(
-            '[data-slot="sortable-item-handle"][title="AAO verschieben"]'
-        );
+        if (element.querySelector(`#${AAO_SETTINGS_PANEL_ID}`)) {
+            return false;
+        }
+
+        return !!getSettingsAAORowNameElement(element);
     }
 
-    /* -----------------------------------------------------
-       Die native AAO-Liste wird nur im Einstellungs-Dialog
-       gesucht. Das Alarmierungsfenster rendert seine
-       AAO-Karten mit identischem dnd-kit-Markup. Ohne diese
-       Einschränkung liefert der erste Treffer im Dokument
-       die Liste des falschen Fensters: Die Karten dort
-       enthalten kein „span.font-semibold", der Katalog
-       bleibt leer und die Zuordnungen werden verworfen.
-       ----------------------------------------------------- */
+    function getSettingsAAORows(container) {
+        if (!container) {
+            return [];
+        }
+
+        return Array.from(container.children).filter(
+            isSettingsAAORow
+        );
+    }
 
     function findSettingsAAOContainer() {
         const dialog = findSettingsDialog();
@@ -566,11 +588,45 @@
             return null;
         }
 
+        const section = findSettingsAAOSection() || dialog;
+
         return Array.from(
-            dialog.querySelectorAll(
-                '[data-slot="sortable-content"]'
-            )
-        ).find(isSettingsAAOContainer) || null;
+            section.querySelectorAll('div.space-y-2')
+        ).find(candidate => {
+            return getSettingsAAORows(candidate).length > 0;
+        }) || null;
+    }
+
+    function findSettingsSearchInput() {
+        const section = findSettingsAAOSection();
+
+        if (!section) {
+            return null;
+        }
+
+        return section.querySelector('input') || null;
+    }
+
+    /* -----------------------------------------------------
+       Die nativen Zeilen werden einzeln ausgeblendet. Der
+       Container selbst bleibt sichtbar, sonst verschwänden
+       Suchfeld und der Button „Neue AAO anlegen".
+       ----------------------------------------------------- */
+
+    function hideSettingsAAORows() {
+        for (const row of getSettingsAAORows(
+            findSettingsAAOContainer()
+        )) {
+            row.style.display = 'none';
+        }
+    }
+
+    function showSettingsAAORows() {
+        for (const row of getSettingsAAORows(
+            findSettingsAAOContainer()
+        )) {
+            row.style.display = '';
+        }
     }
 
     function findSettingsDialog() {
@@ -639,7 +695,6 @@
 
         if (container && container.parentElement) {
             return {
-                container,
                 host: container.parentElement,
                 anchor: container.nextSibling
             };
@@ -652,7 +707,6 @@
         }
 
         return {
-            container: null,
             host: section,
             anchor: null
         };
@@ -854,16 +908,10 @@
         if (settingsContainer) {
             const seenSettingsKeys = new Set();
 
-            const rows = Array.from(
-                settingsContainer.querySelectorAll(
-                    ':scope > [data-slot="sortable-item"]'
-                )
-            );
+            const rows = getSettingsAAORows(settingsContainer);
 
             for (const row of rows) {
-                const nameElement = row.querySelector(
-                    'span.font-semibold'
-                );
+                const nameElement = getSettingsAAORowNameElement(row);
 
                 if (!nameElement) {
                     continue;
@@ -878,9 +926,19 @@
                 const key = api.getAAOKey(name);
                 seenSettingsKeys.add(key);
 
-                const summaryElement = row.querySelector(
-                    'span.font-mono'
-                );
+                /* -----------------------------------------------------
+                   Die Kurzbeschreibung ist ein Badge direkt neben
+                   dem Namen. Ueber die Position ermitteln, damit
+                   eine Aenderung der Hilfsklassen nicht stoert.
+                   ----------------------------------------------------- */
+
+                const infoElement = nameElement.parentElement;
+
+                const summaryElement = infoElement
+                    ? Array.from(infoElement.children).find(
+                        child => child !== nameElement
+                    )
+                    : null;
 
                 const summary = summaryElement
                     ? summaryElement.textContent.trim()
@@ -911,15 +969,19 @@
                Katalogeintraege entfernen, die nicht mehr in der
                nativen Liste stehen.
 
-               Zuordnungen werden dabei NIE geloescht. Laesst
-               sich die Liste nicht parsen, ist das ein Fehlalarm
-               und wuerde saemtliche Zuordnungen vernichten –
-               danach laesst sich keine AAO mehr kategorisieren.
-               Verwaiste Zuordnungen sind harmlos, weil sie nur
-               ueber den Katalog ausgewertet werden.
+               Waehrend einer Suche zeigt das Spiel nur einen
+               Teil der AAOs, dann darf nichts entfernt werden.
+               Zuordnungen werden grundsaetzlich nie geloescht:
+               Laesst sich die Liste nicht auslesen, waere das
+               ein Fehlalarm und wuerde saemtliche Zuordnungen
+               vernichten – danach laesst sich keine AAO mehr
+               kategorisieren.
                ----------------------------------------------------- */
 
-            if (seenSettingsKeys.size > 0) {
+            const canPrune = seenSettingsKeys.size > 0 &&
+                !settingsSearchValue.trim();
+
+            if (canPrune) {
                 for (const [key, aao] of aaoCatalog) {
                     if (
                         aao.source === 'settings' &&
@@ -1132,35 +1194,27 @@
            ----------------------------------------------------- */
 
         if (!original || !original.isConnected) {
-            const settingsContainer = findSettingsAAOContainer();
+            const rows = getSettingsAAORows(
+                findSettingsAAOContainer()
+            );
 
-            if (settingsContainer) {
-                const rows = Array.from(
-                    settingsContainer.querySelectorAll(
-                        ':scope > [data-slot="sortable-item"]'
-                    )
-                );
+            for (const row of rows) {
+                const nameElement = getSettingsAAORowNameElement(row);
 
-                for (const row of rows) {
-                    const nameElement = row.querySelector(
-                        'span.font-semibold'
-                    );
+                if (!nameElement) {
+                    continue;
+                }
 
-                    if (!nameElement) {
-                        continue;
-                    }
+                if (
+                    api.getAAOKey(
+                        nameElement.textContent.trim()
+                    ) === key
+                ) {
+                    original = row;
 
-                    if (
-                        api.getAAOKey(
-                            nameElement.textContent.trim()
-                        ) === key
-                    ) {
-                        original = row;
+                    originalAAORows.set(key, row);
 
-                        originalAAORows.set(key, row);
-
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -1212,6 +1266,17 @@
     /* =========================================================
        Dispatch category UI
        ========================================================= */
+
+    function matchesSearch(aao, search) {
+        if (!search) {
+            return true;
+        }
+
+        return (
+            aao.name.toLowerCase().includes(search) ||
+            aao.summary.toLowerCase().includes(search)
+        );
+    }
 
     function sortAAOs(aaos, order) {
         const ordering = Array.isArray(order) ? order : [];
@@ -1682,9 +1747,7 @@
             placement.host.insertBefore(panel, placement.anchor);
         }
 
-        if (placement.container) {
-            placement.container.style.display = 'none';
-        }
+        hideSettingsAAORows();
 
         ensureAAOOrdersSynced();
 
@@ -1757,6 +1820,8 @@
         /* -----------------------------------------------------
            Categories
            ----------------------------------------------------- */
+
+        const search = settingsSearchValue.trim().toLowerCase();
 
         for (const category of categories) {
             const section = document.createElement('div');
@@ -1890,7 +1955,8 @@
 
             const aaos = sortAAOs(
                 Array.from(aaoCatalog.values()).filter(aao => {
-                    return assignments[aao.key] === category.id;
+                    return assignments[aao.key] === category.id &&
+                        matchesSearch(aao, search);
                 }),
                 category.aaoOrder
             );
@@ -1989,7 +2055,20 @@
            Uncategorized
            ----------------------------------------------------- */
 
-        const uncategorized = getUncategorizedAAOs();
+        const uncategorized = getUncategorizedAAOs().filter(aao => {
+            return matchesSearch(aao, search);
+        });
+
+        if (search && uncategorized.length === 0) {
+            const hint = document.createElement('div');
+
+            hint.className = 'afilia-settings-empty-hint';
+
+            hint.textContent =
+                `Keine AAO gefunden für „${settingsSearchValue.trim()}".`;
+
+            panel.appendChild(hint);
+        }
 
         if (uncategorized.length > 0) {
             const section = document.createElement('div');
@@ -2176,6 +2255,16 @@
             renderDispatchPanel();
         });
 
+        /* -----------------------------------------------------
+           Bearbeiten und Loeschen werden an die nativen
+           Aktionsschaltflaechen der Zeile weitergereicht.
+           In der aktuellen Markup-Variante sitzen sie in der
+           Aktionsspalte: „data-slot=button" bearbeitet,
+           „data-slot=alert-dialog-trigger" fragt vor dem
+           Loeschen nach. Die Icon-Erkennung bleibt als
+           Rueckfall bestehen.
+           ----------------------------------------------------- */
+
         row.querySelector('.afilia-settings-edit')
             .addEventListener('click', event => {
                 event.preventDefault();
@@ -2187,19 +2276,26 @@
                     return;
                 }
 
-                const editButton = Array.from(
+                const buttons = Array.from(
                     original.querySelectorAll('button')
-                ).find(button => {
-                    const svg = button.querySelector('svg');
+                );
 
-                    return (
-                        svg &&
-                        (
-                            svg.classList.contains('lucide-pencil') ||
-                            svg.getAttribute('class')?.includes('pencil')
-                        )
-                    );
-                });
+                const byIcon = button => {
+                    const svgClass =
+                        button.querySelector('svg')?.getAttribute(
+                            'class'
+                        ) || '';
+
+                    return svgClass.includes('pencil');
+                };
+
+                const editButton =
+                    buttons.find(button => {
+                        return button.getAttribute('data-slot') ===
+                            'button';
+                    }) ||
+                    buttons.find(byIcon) ||
+                    buttons[0];
 
                 if (editButton) {
                     editButton.click();
@@ -2217,13 +2313,15 @@
                     return;
                 }
 
-                const deleteButton = Array.from(
+                const buttons = Array.from(
                     original.querySelectorAll('button')
-                ).find(button => {
-                    const svg = button.querySelector('svg');
+                );
 
+                const isDeleteButton = button => {
                     const svgClass =
-                        svg?.getAttribute('class') || '';
+                        button.querySelector('svg')?.getAttribute(
+                            'class'
+                        ) || '';
 
                     return (
                         svgClass.includes('trash') ||
@@ -2234,7 +2332,14 @@
                             button.getAttribute('title') || ''
                         )
                     );
-                });
+                };
+
+                const deleteButton =
+                    buttons.find(button => {
+                        return button.getAttribute('data-slot') ===
+                            'alert-dialog-trigger';
+                    }) ||
+                    buttons.find(isDeleteButton);
 
                 if (deleteButton) {
                     deleteButton.click();
@@ -2247,6 +2352,32 @@
     /* =========================================================
        Search synchronization
        ========================================================= */
+
+    /* -----------------------------------------------------
+       Das Suchfeld der nativen AAO-Liste filtert die
+       Toolbox-Mitschrift. Die nativen Zeilen sind ausgeblendet,
+       das Feld selbst bleibt sichtbar.
+       ----------------------------------------------------- */
+
+    function hookSettingsSearch() {
+        const input = findSettingsSearchInput();
+
+        if (!input) {
+            return;
+        }
+
+        if (input.dataset.afiliaSearchHooked === 'true') {
+            return;
+        }
+
+        input.dataset.afiliaSearchHooked = 'true';
+
+        input.addEventListener('input', () => {
+            settingsSearchValue = input.value || '';
+
+            renderSettingsPanel();
+        });
+    }
 
     function hookDispatchSearch(dialog) {
         const input = dialog?.querySelector(
@@ -2292,6 +2423,8 @@
         const settingsSection = findSettingsAAOSection();
 
         if (settingsSection) {
+            hookSettingsSearch();
+
             const panel = document.querySelector(
                 `#${AAO_SETTINGS_PANEL_ID}`
             );
@@ -2311,9 +2444,12 @@
                 lastSettingsSection = settingsSection;
 
                 renderSettingsPanel();
+            } else {
+                hideSettingsAAORows();
             }
         } else {
             lastSettingsSection = null;
+            settingsSearchValue = '';
 
             document.querySelector(
                 `#${AAO_SETTINGS_PANEL_ID}`
@@ -2369,15 +2505,11 @@
     }
 
     function dispose() {
+        showSettingsAAORows();
+
         document.querySelector(
             `#${AAO_SETTINGS_PANEL_ID}`
         )?.remove();
-
-        const settingsContainer = findSettingsAAOContainer();
-
-        if (settingsContainer) {
-            settingsContainer.style.display = '';
-        }
 
         const dispatchDialog = findDispatchDialog();
 
@@ -2402,6 +2534,7 @@
         lastDispatchContainer = null;
         lastSettingsSection = null;
         dispatchSearchValue = '';
+        settingsSearchValue = '';
         draggedCategoryID = null;
         draggedAAOKey = null;
         uncategorizedAAOOrder = [];

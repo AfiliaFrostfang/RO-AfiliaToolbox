@@ -57,7 +57,7 @@
     "applets": {
         "aaoCategories": {
             "1.0.3": [
-                "AAOs konnten nicht mehr kategorisiert werden. Die Toolbox hat die AAO-Liste des Alarmierungsfensters mit der Liste in den Einstellungen verwechselt, dadurch wurden die Kategorien ohne AAOs angezeigt und bereits gespeicherte Zuordnungen verworfen. Zugeordnete AAOs bleiben jetzt erhalten, auch wenn sich die Liste des Spiels gerade nicht auslesen lässt."
+                "Das Spiel hat die Liste der AAOs in den Einstellungen umgebaut. Die Toolbox hat die alte Struktur gesucht und deshalb keine AAOs mehr gefunden: Die Kategorien wurden zwar angezeigt, ließen sich aber weder zuordnen noch bearbeiten. Die Toolbox passt sich der neuen Liste an und übernimmt deren Suchfeld. Bereits gespeicherte Zuordnungen bleiben erhalten, auch wenn sich die Liste des Spiels gerade nicht auslesen lässt."
             ],
             "1.0.2":[
                 "Unter bestimmten Umständen konnte es vorkommen, dass die AAO-Kategorien nicht korrekt geladen wurden. Zum Beispiel in einem neuen Spiel, in dem noch keine AAOs gespeichert waren."
