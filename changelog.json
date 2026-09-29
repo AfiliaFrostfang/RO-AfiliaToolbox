@@ -56,6 +56,10 @@
     },
     "applets": {
         "aaoCategories": {
+            "1.0.3": [
+                "AAO-Kategorien: Bugfix – Es konnte vorkommen, dass die Kategorien gar nicht erst angezeigt wurden. Die AAO-Liste wird jetzt an ihrem Inhalt erkannt statt an technischen Attributen des Spiels, die sich geändert haben. Dadurch funktionieren die Kategorien wieder unabhängig davon, ob eine oder mehrere AAOs angelegt sind.",
+                "Das Kategorie-Panel wird jetzt als eigenständiger Bereich neben der AAO-Liste eingefügt und blendet diese nur noch aus. Vorher konnte es dadurch selbst mit ausgeblendet werden."
+            ],
             "1.0.2":[
                 "Unter bestimmten Umständen konnte es vorkommen, dass die AAO-Kategorien nicht korrekt geladen wurden. Zum Beispiel in einem neuen Spiel, in dem noch keine AAOs gespeichert waren."
             ],

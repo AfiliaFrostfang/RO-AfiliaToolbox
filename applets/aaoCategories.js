@@ -2431,7 +2431,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.2',
+        version: '1.0.3',
         init,
         onScan,
         dispose

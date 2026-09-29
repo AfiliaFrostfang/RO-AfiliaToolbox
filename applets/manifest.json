@@ -1,7 +1,7 @@
 {
     "aaoCategories": {
         "file": "applets/aaoCategories.js",
-        "version": "1.0.2"
+        "version": "1.0.3"
     },
     "notepad": {
         "file": "applets/notepad.js",
