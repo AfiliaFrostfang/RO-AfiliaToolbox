@@ -56,6 +56,9 @@
     },
     "applets": {
         "aaoCategories": {
+            "1.0.2":[
+                "Unter bestimmten Umständen konnte es vorkommen, dass die AAO-Kategorien nicht korrekt geladen wurden. Zum Beispiel in einem neuen Spiel, in dem noch keine AAOs gespeichert waren."
+            ],
             "1.0.1": [
                 "AAOs lassen sich jetzt frei per Drag & Drop sortieren (an der Griffleiste „⋮⋮“ ziehen), anstatt zwangsweise alphabetisch sortiert zu werden. Die Reihenfolge gilt auch in der Fahrzeug-Alarmierung und wird gespeichert."
             ],

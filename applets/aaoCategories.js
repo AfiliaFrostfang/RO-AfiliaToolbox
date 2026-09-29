@@ -40,7 +40,7 @@
     const originalAAORows = new Map();
 
     let lastDispatchContainer = null;
-    let lastSettingsContainer = null;
+    let lastSettingsSection = null;
 
     let dispatchSearchValue = '';
     let draggedCategoryID = null;
@@ -103,6 +103,16 @@
 
             .afilia-add-category:hover {
                 background: #dc2626;
+            }
+
+            .afilia-settings-empty-hint {
+                margin-bottom: 10px;
+                padding: 10px 14px;
+                border: 1px dashed #d1d5db;
+                border-radius: 12px;
+                background: #f9fafb;
+                font-size: 12px;
+                color: #6b7280;
             }
 
             .afilia-settings-category {
@@ -553,6 +563,53 @@
         ) || null;
     }
 
+    function findSettingsDialog() {
+        const dialogs = Array.from(
+            document.querySelectorAll(
+                '[role="dialog"][data-slot="sheet-content"]'
+            )
+        );
+
+        return dialogs.find(dialog => {
+            return Array.from(dialog.querySelectorAll('h2')).some(h2 => {
+                return h2.textContent.trim() === 'Einstellungen';
+            });
+        }) || null;
+    }
+
+    /* -----------------------------------------------------
+       Anker für das Kategorien-Panel.
+
+       Die native AAO-Liste existiert nur, wenn mindestens
+       eine AAO angelegt wurde. In einem neuen Spiel
+       rendert das Spiel stattdessen nur den Button
+       „Neue AAO anlegen" und die sortierbare Liste fehlt
+       komplett. Der Abschnitt mit der Überschrift
+       „Alarm- und Ausrückeordnung" existiert dagegen
+       immer und taugt daher als stabiler Anker.
+       ----------------------------------------------------- */
+
+    function findSettingsAAOSection() {
+        const dialog = findSettingsDialog();
+
+        if (!dialog) {
+            return null;
+        }
+
+        const heading = Array.from(
+            dialog.querySelectorAll('h3')
+        ).find(h3 => {
+            return h3.textContent.trim() ===
+                'Alarm- und Ausrückeordnung';
+        });
+
+        if (!heading) {
+            return null;
+        }
+
+        return heading.closest('div.space-y-4') || null;
+    }
+
     function findDispatchDialog() {
         const dialogs = Array.from(
             document.querySelectorAll(
@@ -819,6 +876,26 @@
 
                     changed = true;
                 }
+            }
+        } else {
+            /* -----------------------------------------------------
+               Es ist keine AAO angelegt, die native Liste fehlt
+               also komplett. Katalogeintraege verwerfen, damit
+               keine veralteten AAOs angezeigt werden. Die
+               Zuordnungen bleiben erhalten, damit sie nach dem
+               Anlegen der ersten AAO wieder greifen.
+               ----------------------------------------------------- */
+
+            for (const [key, aao] of aaoCatalog) {
+                if (aao.source !== 'settings') {
+                    continue;
+                }
+
+                aaoCatalog.delete(key);
+                originalAAORows.delete(key);
+                selectedAAOs.delete(key);
+
+                changed = true;
             }
         }
 
@@ -1528,23 +1605,33 @@
     }
 
     function renderSettingsPanel() {
-        const container = findSettingsAAOContainer();
+        const section = findSettingsAAOSection();
 
-        if (!container) {
+        if (!section) {
             return;
         }
+
+        const container = findSettingsAAOContainer();
+
+        const host =
+            section.querySelector(':scope > div.space-y-2') ||
+            section;
 
         let panel = document.querySelector(
             `#${AAO_SETTINGS_PANEL_ID}`
         );
 
-        if (!panel) {
+        if (!panel || panel.parentElement !== host) {
+            panel?.remove();
+
             panel = createSettingsPanel();
 
-            container.parentElement.insertBefore(panel, container);
+            host.appendChild(panel);
         }
 
-        container.style.display = 'none';
+        if (container) {
+            container.style.display = 'none';
+        }
 
         ensureAAOOrdersSynced();
 
@@ -1597,6 +1684,22 @@
                 renderSettingsPanel();
                 renderDispatchPanel();
             });
+
+        /* -----------------------------------------------------
+           Empty hint
+           ----------------------------------------------------- */
+
+        if (aaoCatalog.size === 0) {
+            const hint = document.createElement('div');
+
+            hint.className = 'afilia-settings-empty-hint';
+
+            hint.textContent =
+                'Noch keine AAO angelegt. Lege oben eine AAO an, ' +
+                'um sie hier einer Kategorie zuzuordnen.';
+
+            panel.appendChild(hint);
+        }
 
         /* -----------------------------------------------------
            Categories
@@ -2133,22 +2236,26 @@
            Settings
            ----------------------------------------------------- */
 
-        const settingsContainer = findSettingsAAOContainer();
+        const settingsSection = findSettingsAAOSection();
 
-        if (settingsContainer) {
+        if (settingsSection) {
             if (
-                settingsContainer !== lastSettingsContainer ||
+                settingsSection !== lastSettingsSection ||
                 !document.querySelector(
                     `#${AAO_SETTINGS_PANEL_ID}`
                 ) ||
                 catalogChanged
             ) {
-                lastSettingsContainer = settingsContainer;
+                lastSettingsSection = settingsSection;
 
                 renderSettingsPanel();
             }
         } else {
-            lastSettingsContainer = null;
+            lastSettingsSection = null;
+
+            document.querySelector(
+                `#${AAO_SETTINGS_PANEL_ID}`
+            )?.remove();
         }
 
         /* -----------------------------------------------------
@@ -2231,7 +2338,7 @@
         assignments = {};
 
         lastDispatchContainer = null;
-        lastSettingsContainer = null;
+        lastSettingsSection = null;
         dispatchSearchValue = '';
         draggedCategoryID = null;
         draggedAAOKey = null;
@@ -2248,7 +2355,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.1',
+        version: '1.0.2',
         init,
         onScan,
         dispose
