@@ -617,7 +617,13 @@
         for (const row of getSettingsAAORows(
             findSettingsAAOContainer()
         )) {
-            row.style.display = 'none';
+            /* Nur setzen, wenn es sich aendert: Jede
+               Mutation loest ueber den Observer einen Scan
+               aus, der wiederum das Panel neu aufbaut. */
+
+            if (row.style.display !== 'none') {
+                row.style.display = 'none';
+            }
         }
     }
 
@@ -1740,9 +1746,17 @@
             panel = createSettingsPanel();
         }
 
+        /* -----------------------------------------------------
+           Der Anker ist der Knoten direkt hinter der nativen
+           Liste. Liegt das Panel dort, ist der Anker das Panel
+           selbst – dann darf nichts verschoben werden. Jede
+           ueberfluessige Bewegung wuerde das Panel bei jedem
+           Scan neu aufbauen und offene Dropdown schliessen.
+           ----------------------------------------------------- */
+
         if (
             panel.parentElement !== placement.host ||
-            panel.nextSibling !== placement.anchor
+            panel !== placement.anchor
         ) {
             placement.host.insertBefore(panel, placement.anchor);
         }
@@ -2434,7 +2448,7 @@
             const panelPlaced = !!panel &&
                 !!placement &&
                 panel.parentElement === placement.host &&
-                panel.nextSibling === placement.anchor;
+                panel === placement.anchor;
 
             if (
                 !panelPlaced ||
