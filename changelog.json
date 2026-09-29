@@ -1,0 +1,80 @@
+{
+    "toolbox": {
+        "1.11.0": [
+            "Technik: Das Changelog wird jetzt nicht mehr im Kernskript mitgeliefert, sondern aus der changelog.json geladen. Das Skript bleibt dadurch klein, auch wenn das Changelog weiter wächst.",
+            "Neu: Applets haben jetzt eigene Versionshinweise. Updates von Applets erscheinen ebenfalls in diesem Popup – auch wenn die Toolbox selbst nicht aktualisiert werden musste."
+        ],
+        "1.10.2": [
+            "Ergänzung der Header Informationen im Kernskript."
+        ],
+        "1.10.1": [
+            "Technik: Applets werden jetzt über ein Manifest geladen. Applet-Updates erscheinen automatisch, ohne dass die Toolbox selbst aktualisiert werden muss."
+        ],
+        "1.10.0": [
+            "NEU: Applet Store – Über den neuen Knopf in der Schnellzugriffsleiste kannst du selbst wählen, welche Funktionen der Toolbox aktiv sind.",
+            "Technik: Die Funktionen sind jetzt in eigene Module (Applets) aufgeteilt und können einzeln aktiviert oder deaktiviert werden. Genau wie bei Cogs eines Discord-Bots."
+        ],
+        "1.9.0": [
+            "Entfernt: Die Funktionen „Fahrzeugliste“ (Kilometerstände) und „Bettenauslastung“, diese Funktionen bleiben deaktiviert bzw. entfernt bis zum Public API Release."
+        ],
+        "1.8.3": [
+            "Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige wird jetzt automatisch alle 60 Sekunden aktualisiert, auch ohne das Stations-Panel zu öffnen. (Der Poll ruft jetzt die Stationsdaten statt der Sitzungsdaten ab.)"
+        ],
+        "1.8.2": [
+            "AAO-Kategorien: AAOs lassen sich jetzt frei per Drag & Drop sortieren (an der Griffleiste „⋮⋮“ ziehen), anstatt zwangsweise alphabetisch sortiert zu werden. Die Reihenfolge gilt auch in der Fahrzeug-Alarmierung und wird gespeichert."
+        ],
+        "1.8.1": [
+            "Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige der Bettenauslastung wird jetzt korrekt aktualisiert, wenn sich die Bettenanzahl ändert. (Fetched alle 60sec die Daten neu.)"
+        ],
+        "1.8.0": [
+            "Neue Anzeige „Bettenauslastung“ in der Statusleiste oben rechts: zeigt belegte und maximale Betten aller Krankenhäuser sowie die Auslastung in Prozent.",
+            "Die Auslastung wird automatisch aus den Spieldaten ausgelesen und pro Spiel lokal zwischengespeichert."
+        ],
+        "1.7.5": [
+            "Bugfix: Kilometerstände und Fahrzeugdaten werden jetzt getrennt pro Spiel gespeichert. Einträge aus anderen Spielen werden ignoriert und nicht mehr versucht abzurufen (Endete in einem Cacheloop mit Websocket Fehlern)."
+        ],
+        "1.7.4": [
+            "Fahrzeugliste: Ein neuer Aktualisieren-Knopf lädt die Kilometerstände aller Fahrzeuge sofort neu."
+        ],
+        "1.7.3": [
+            "Fahrzeugliste: Fahrzeuge mit mehr als 30.000 gefahrenen Kilometern erhalten ein Warnsymbol neben dem Kilometerstand.",
+            "Ein Klick auf das Warnsymbol öffnet einen Hinweis zur erhöhten Laufleistung und möglichen Reparaturkosten."
+        ],
+        "1.7.2": [
+            "Fahrzeugliste: Die Fortschrittsanzeige beim Laden der Kilometerstände verschwindet nach dem Laden automatisch.",
+            "Fahrzeugliste: Kilometerstände werden robuster aus der API gelesen; fehlgeschlagene Abrufe werden angezeigt."
+        ],
+        "1.7.0": [
+            "Fahrzeugliste: Der gefahrene Kilometerstand wird automatisch für alle Fahrzeuge geladen und neben jedem Fahrzeug angezeigt.",
+            "Neuer Schalter „Nach km sortieren“ sortiert die Fahrzeugliste nach gefahrenen Kilometern (absteigend).",
+            "Fahrzeugdaten werden lokal zwischengespeichert, damit nicht bei jedem Öffnen erneut alle Daten geladen werden."
+        ],
+        "1.6.0": [
+            "Neuer Notizblock in der rechten Leiste – Notizen werden automatisch lokal gespeichert.",
+            "Nach einem Update erscheint dieses Popup mit den Neuerungen der neuen Version."
+        ]
+    },
+    "applets": {
+        "aaoCategories": {
+            "1.0.1": [
+                "AAOs lassen sich jetzt frei per Drag & Drop sortieren (an der Griffleiste „⋮⋮“ ziehen), anstatt zwangsweise alphabetisch sortiert zu werden. Die Reihenfolge gilt auch in der Fahrzeug-Alarmierung und wird gespeichert."
+            ],
+            "1.0.0": [
+                "Erste Version: Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht."
+            ]
+        },
+        "notepad": {
+            "1.0.0": [
+                "Erste Version: Fügt einen Notizblock zu den Schnelltasten hinzu. Notizen werden automatisch lokal gespeichert."
+            ]
+        },
+        "fmsAlert": {
+            "1.0.1": [
+                "Bugfix: Das Applet respektiert jetzt die globale Stummschaltung des Spiels – der Alarmton wird nicht mehr abgespielt, solange das Spiel stummgeschaltet ist."
+            ],
+            "1.0.0": [
+                "Erste Version: Spielt alle 5 Minuten einen Alarmton ab, solange ein Sprechwunsch vorliegt."
+            ]
+        }
+    }
+}

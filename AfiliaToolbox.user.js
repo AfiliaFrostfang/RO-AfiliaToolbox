@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.10.2
+// @version      1.11.0
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
 // @discord      https://discord.gg/h6HEjwaMpW
@@ -23,11 +23,13 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.10.2';
+    const SCRIPT_VERSION = '1.11.0';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/applets/manifest.json';
+    const CHANGELOG_URL =
+        'https://afiliafrostfang.github.io/RO-AfiliaToolbox/changelog.json';
     const APPLETS_BASE_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/';
     const PROJECT_URL =
@@ -35,62 +37,11 @@
 
     const UPDATE_NOTICE_ID = 'afilia-aao-update-notice';
     const CHANGELOG_STORE_KEY = 'lastSeenVersion';
+    const CHANGELOG_APPLETS_KEY = 'lastSeenAppletVersions';
     const CHANGELOG_POPUP_ID = 'afilia-changelog-popup';
     const ENABLED_APPLETS_KEY = 'enabledApplets';
     const STORE_PANEL_ID = 'afilia-applet-store';
     const STORE_BUTTON_CLASS = 'afilia-store-button';
-
-    const CHANGELOG = {
-        '1.10.2': [
-            'Ergänzung der Header Informationen im Kernskript.'
-        ],
-        '1.10.1': [
-            'Technik: Applets werden jetzt über ein Manifest geladen. Applet-Updates erscheinen automatisch, ohne dass die Toolbox selbst aktualisiert werden muss.'
-        ],
-        '1.10.0': [
-            'NEU: Applet Store – Über den neuen Knopf in der Schnellzugriffsleiste kannst du selbst wählen, welche Funktionen der Toolbox aktiv sind.',
-            'Technik: Die Funktionen sind jetzt in eigene Module (Applets) aufgeteilt und können einzeln aktiviert oder deaktiviert werden. Genau wie bei Cogs eines Discord-Bots.'
-        ],
-        '1.9.0': [
-            'Entfernt: Die Funktionen „Fahrzeugliste“ (Kilometerstände) und „Bettenauslastung“, diese Funktionen bleiben deaktiviert bzw. entfernt bis zum Public API Release.'
-        ],
-        '1.8.3': [
-            'Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige wird jetzt automatisch alle 60 Sekunden aktualisiert, auch ohne das Stations-Panel zu öffnen. (Der Poll ruft jetzt die Stationsdaten statt der Sitzungsdaten ab.)'
-        ],
-        '1.8.2': [
-            'AAO-Kategorien: AAOs lassen sich jetzt frei per Drag & Drop sortieren (an der Griffleiste „⋮⋮" ziehen), anstatt zwangsweise alphabetisch sortiert zu werden. Die Reihenfolge gilt auch in der Fahrzeug-Alarmierung und wird gespeichert.'
-        ],
-        '1.8.1': [
-            'Krankenhaus-Bettenauslastung: Bugfix – Die Anzeige der Bettenauslastung wird jetzt korrekt aktualisiert, wenn sich die Bettenanzahl ändert. (Fetched alle 60sec die Daten neu.)'
-        ],
-        '1.8.0': [
-            'Neue Anzeige „Bettenauslastung" in der Statusleiste oben rechts: zeigt belegte und maximale Betten aller Krankenhäuser sowie die Auslastung in Prozent.',
-            'Die Auslastung wird automatisch aus den Spieldaten ausgelesen und pro Spiel lokal zwischengespeichert.'
-        ],
-        '1.7.5': [
-            'Bugfix: Kilometerstände und Fahrzeugdaten werden jetzt getrennt pro Spiel gespeichert. Einträge aus anderen Spielen werden ignoriert und nicht mehr versucht abzurufen (Endete in einem Cacheloop mit Websocket Fehlern).'
-        ],
-        '1.7.4': [
-            'Fahrzeugliste: Ein neuer Aktualisieren-Knopf lädt die Kilometerstände aller Fahrzeuge sofort neu.'
-        ],
-        '1.7.3': [
-            'Fahrzeugliste: Fahrzeuge mit mehr als 30.000 gefahrenen Kilometern erhalten ein Warnsymbol neben dem Kilometerstand.',
-            'Ein Klick auf das Warnsymbol öffnet einen Hinweis zur erhöhten Laufleistung und möglichen Reparaturkosten.'
-        ],
-        '1.7.2': [
-            'Fahrzeugliste: Die Fortschrittsanzeige beim Laden der Kilometerstände verschwindet nach dem Laden automatisch.',
-            'Fahrzeugliste: Kilometerstände werden robuster aus der API gelesen; fehlgeschlagene Abrufe werden angezeigt.'
-        ],
-        '1.7.0': [
-            'Fahrzeugliste: Der gefahrene Kilometerstand wird automatisch für alle Fahrzeuge geladen und neben jedem Fahrzeug angezeigt.',
-            'Neuer Schalter „Nach km sortieren" sortiert die Fahrzeugliste nach gefahrenen Kilometern (absteigend).',
-            'Fahrzeugdaten werden lokal zwischengespeichert, damit nicht bei jedem Öffnen erneut alle Daten geladen werden.'
-        ],
-        '1.6.0': [
-            'Neuer Notizblock in der rechten Leiste – Notizen werden automatisch lokal gespeichert.',
-            'Nach einem Update erscheint dieses Popup mit den Neuerungen der neuen Version.'
-        ]
-    };
 
     /* =========================================================
        Runtime state
@@ -545,42 +496,170 @@
        Changelog
        ========================================================= */
 
-    async function showChangelogPopup() {
-        const lastSeenVersion =
-            (await dbGet(CHANGELOG_STORE_KEY)) || '';
+    async function loadChangelogData() {
+        try {
+            const response = await fetchNoStore(CHANGELOG_URL);
 
-        if (compareVersions(SCRIPT_VERSION, lastSeenVersion) <= 0) {
-            return;
+            return await response.json();
+        } catch (error) {
+            console.debug(
+                '[Afilia Toolbox] Changelog not available:',
+                error
+            );
+
+            return null;
         }
+    }
 
-        const entries = Object.keys(CHANGELOG)
+    function pickNewerNotes(source, lastSeenVersion) {
+        return Object.keys(source || {})
             .filter(version => {
                 return (
                     compareVersions(version, lastSeenVersion) > 0 &&
-                    Array.isArray(CHANGELOG[version])
+                    Array.isArray(source[version]) &&
+                    source[version].length > 0
                 );
             })
-            .sort((left, right) => {
-                return compareVersions(right, left);
-            })
+            .sort((left, right) => compareVersions(right, left))
             .map(version => ({
                 version,
-                notes: CHANGELOG[version]
+                notes: source[version].map(note => String(note))
             }));
+    }
 
-        if (entries.length === 0) {
+    function collectAppletChangelog(data, seenApplets) {
+        const entries = [];
+
+        for (const applet of appletRegistry.values()) {
+            const notes = pickNewerNotes(
+                (data || {})[applet.id],
+                seenApplets[applet.id] || '0'
+            );
+
+            if (notes.length === 0) {
+                continue;
+            }
+
+            entries.push({
+                id: applet.id,
+                name: applet.name || applet.id,
+                version: applet.version || '',
+                notes
+            });
+        }
+
+        return entries;
+    }
+
+    function markAppletsAsSeen(seenApplets) {
+        const next = {
+            ...seenApplets
+        };
+
+        for (const applet of appletRegistry.values()) {
+            if (typeof applet.version === 'string' && applet.version) {
+                next[applet.id] = applet.version;
+            }
+        }
+
+        return next;
+    }
+
+    async function showChangelogPopup() {
+        const data = await loadChangelogData();
+
+        if (!data || typeof data !== 'object') {
             return;
         }
 
-        renderChangelogPopup(entries);
+        const lastSeenVersion =
+            (await dbGet(CHANGELOG_STORE_KEY)) || '';
+
+        const seenApplets =
+            (await dbGet(CHANGELOG_APPLETS_KEY)) || {};
+
+        const toolboxEntries = pickNewerNotes(
+            data.toolbox,
+            lastSeenVersion
+        );
+
+        const appletEntries = collectAppletChangelog(
+            data.applets,
+            seenApplets
+        );
+
+        if (toolboxEntries.length === 0 && appletEntries.length === 0) {
+            return;
+        }
+
+        renderChangelogPopup(toolboxEntries, appletEntries);
 
         await dbSet(CHANGELOG_STORE_KEY, SCRIPT_VERSION);
+        await dbSet(
+            CHANGELOG_APPLETS_KEY,
+            markAppletsAsSeen(seenApplets)
+        );
     }
 
-    function renderChangelogPopup(entries) {
+    function renderChangelogPopup(toolboxEntries, appletEntries) {
         if (document.getElementById(CHANGELOG_POPUP_ID)) {
             return;
         }
+
+        const toolboxSection = toolboxEntries.map(entry => `
+            <div class="afilia-changelog-version">
+                <div class="afilia-changelog-version-title">
+                    Version ${escapeHTML(entry.version)}
+                </div>
+
+                <ul class="afilia-changelog-list">
+                    ${entry.notes.map(note => `
+                        <li>${escapeHTML(note)}</li>
+                    `).join('')}
+                </ul>
+            </div>
+        `).join('');
+
+        const appletSection = appletEntries.length === 0
+            ? ''
+            : `
+                <div class="afilia-changelog-section-title">
+                    Applet-Updates
+                </div>
+
+                ${appletEntries.map(entry => `
+                    <div class="afilia-changelog-applet">
+                        <div class="afilia-changelog-applet-head">
+                            <span class="afilia-changelog-applet-name">
+                                <i class="fa-solid fa-shapes"></i>
+                                ${escapeHTML(entry.name)}
+                            </span>
+
+                            ${
+                                entry.version
+                                    ? `
+                                        <span class="afilia-changelog-applet-version">
+                                            v${escapeHTML(entry.version)}
+                                        </span>
+                                    `
+                                    : ''
+                            }
+                        </div>
+
+                        ${entry.notes.map(note => `
+                            <div class="afilia-changelog-version-title">
+                                Version ${escapeHTML(note.version)}
+                            </div>
+
+                            <ul class="afilia-changelog-list">
+                                ${note.notes.map(line => `
+                                    <li>${escapeHTML(line)}</li>
+                                `).join('')}
+                            </ul>
+                        `).join('')}
+                    </div>
+                `).join('')}
+            `;
 
         const overlay = document.createElement('div');
 
@@ -604,19 +683,8 @@
                 </div>
 
                 <div class="afilia-changelog-popup-body">
-                    ${entries.map(entry => `
-                        <div class="afilia-changelog-version">
-                            <div class="afilia-changelog-version-title">
-                                Version ${escapeHTML(entry.version)}
-                            </div>
-
-                            <ul class="afilia-changelog-list">
-                                ${entry.notes.map(note => `
-                                    <li>${escapeHTML(note)}</li>
-                                `).join('')}
-                            </ul>
-                        </div>
-                    `).join('')}
+                    ${toolboxSection}
+                    ${appletSection}
                 </div>
             </div>
         `;
@@ -1029,6 +1097,70 @@
 
             .afilia-changelog-version + .afilia-changelog-version {
                 margin-top: 16px;
+            }
+
+            .afilia-changelog-section-title {
+                margin-top: 20px;
+                margin-bottom: 10px;
+                padding-top: 14px;
+                border-top: 1px solid #e5e7eb;
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: #6b7280;
+            }
+
+            .afilia-changelog-applet {
+                padding: 12px;
+                border: 1px solid #e5e7eb;
+                border-radius: 12px;
+                background: #f9fafb;
+            }
+
+            .afilia-changelog-applet + .afilia-changelog-applet {
+                margin-top: 10px;
+            }
+
+            .afilia-changelog-applet-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 8px;
+            }
+
+            .afilia-changelog-applet-name {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+                font-size: 14px;
+                font-weight: 700;
+                color: #111827;
+            }
+
+            .afilia-changelog-applet-version {
+                flex: 0 0 auto;
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: #e5e7eb;
+                color: #374151;
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .afilia-changelog-applet .afilia-changelog-version-title {
+                color: #6b7280;
+                font-size: 12px;
+            }
+
+            .afilia-changelog-applet .afilia-changelog-version-title + .afilia-changelog-list {
+                margin-bottom: 8px;
+            }
+
+            .afilia-changelog-applet .afilia-changelog-list:last-child {
+                margin-bottom: 0;
             }
 
             .afilia-changelog-version-title {
