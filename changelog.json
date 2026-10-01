@@ -90,6 +90,12 @@
             "1.0.0": [
                 "Erste Version: Spielt alle 5 Minuten einen Alarmton ab, solange ein Sprechwunsch vorliegt."
             ]
+        },
+        "mapDarkmode": {
+            "1.0.0": [
+                "Erste Version: Blendet die Karte auf Wunsch ab. Das Sonne/Mond-Icon in der Toolbox schaltet zwischen dunkler und heller Karte um.",
+                "Die Einstellung wird lokal gespeichert und bleibt deshalb auch nach einem Neuladen des Spiels erhalten."
+            ]
         }
     }
 }
