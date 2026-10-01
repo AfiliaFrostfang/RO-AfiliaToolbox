@@ -1,5 +1,8 @@
 {
     "toolbox": {
+        "1.12.0":[
+            "Technik: Applets werden nun in einem Icon zusammengefasst welche ausfahren wenn man darauf klickt."
+        ],
         "1.11.0": [
             "Technik: Das Changelog wird jetzt nicht mehr im Kernskript mitgeliefert, sondern aus der changelog.json geladen. Das Skript bleibt dadurch klein, auch wenn das Changelog weiter wächst.",
             "Neu: Applets haben jetzt eigene Versionshinweise. Updates von Applets erscheinen ebenfalls in diesem Popup – auch wenn die Toolbox selbst nicht aktualisiert werden musste."

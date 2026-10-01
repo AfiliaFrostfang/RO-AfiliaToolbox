@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.11.0
+// @version      1.12.0
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
 // @discord      https://discord.gg/h6HEjwaMpW
@@ -23,7 +23,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.11.0';
+    const SCRIPT_VERSION = '1.12.0';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
@@ -43,6 +43,16 @@
     const STORE_PANEL_ID = 'afilia-applet-store';
     const STORE_BUTTON_CLASS = 'afilia-store-button';
 
+    /* Alle Applet-Icons liegen gesammelt in einem aufklappbaren
+       Slot direkt unter dem Toolbox-Button. Der Store-Button bleibt
+       davon unberührt und steht weiterhin oben in der Leiste. */
+
+    const TOOLBOX_BUTTON_CLASS = 'afilia-toolbox-button';
+    const TOOLBOX_SLOT_CLASS = 'afilia-toolbox-slot';
+    const TOOLBOX_SLOT_ITEM_HEIGHT = 48;
+    const TOOLBOX_SLOT_MAX_ITEMS = 5;
+    const TOOLBOX_SLOT_MAX_VIEWPORT = '40vh';
+
     /* =========================================================
        Runtime state
        ========================================================= */
@@ -53,6 +63,8 @@
     let scanTimer = null;
 
     let lastStoreContainer = null;
+    let lastToolboxContainer = null;
+    let toolboxExpanded = false;
 
     const appletRegistry = new Map();
     let appletStates = {};
@@ -202,7 +214,9 @@
         escapeHTML,
         normalizeName,
         getAAOKey,
-        createID
+        createID,
+        getAppletSlot,
+        mountAppletButton
     };
 
     /* =========================================================
@@ -399,6 +413,11 @@
         } else {
             await runAppletDispose(applet);
         }
+
+        /* Ein- und Ausschalten ändert die Zahl der Icons
+           im aufklappbaren Slot. */
+
+        scheduleScan();
     }
 
     /* =========================================================
@@ -807,6 +826,243 @@
         container.insertBefore(newButton, container.firstChild);
     }
 
+    /* =========================================================
+       Toolbox-Button und aufklappbarer Applet-Slot
+       ========================================================= */
+
+    function getToolboxButton() {
+        const container = findQuickAccessRail();
+
+        if (!container) {
+            return null;
+        }
+
+        return container.querySelector(
+            `.${TOOLBOX_BUTTON_CLASS}`
+        );
+    }
+
+    function getAppletSlot() {
+        const container = findQuickAccessRail();
+
+        if (!container) {
+            return null;
+        }
+
+        return container.querySelector(
+            `.${TOOLBOX_SLOT_CLASS}`
+        );
+    }
+
+    function createToolboxButton() {
+        const button = document.createElement('button');
+
+        button.type = 'button';
+
+        button.className =
+            `${TOOLBOX_BUTTON_CLASS} w-10 h-10 sm:w-10 sm:h-10 bg-dark rounded-lg shadow-lg border border-gray-800/80 hover:border-gray-700 transition-all duration-300 flex items-center justify-center cursor-pointer`;
+
+        button.title =
+            'Toolbox-Applets ein-/ausklappen';
+
+        button.setAttribute('aria-haspopup', 'true');
+        button.setAttribute('aria-expanded', 'false');
+
+        button.innerHTML =
+            '<i class="fa-solid fa-toolbox text-sm sm:text-sm text-white/80"></i>';
+
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            toggleToolboxSlot();
+        });
+
+        return button;
+    }
+
+    function createToolboxSlot() {
+        const slot = document.createElement('div');
+
+        slot.className =
+            `${TOOLBOX_SLOT_CLASS} w-full flex flex-col items-center gap-2`;
+
+        return slot;
+    }
+
+    /* Der Slot bekommt seine Höhe aus der Anzahl der eingehangten
+       Icons, damit die Animation unabhängig von der Applet-Anzahl
+       gleich schnell läuft. Ohne Icons bleibt er zu. */
+
+    function getToolboxSlotHeight(slot) {
+        const count = slot.querySelectorAll(
+            ':scope > *'
+        ).length;
+
+        if (count === 0) {
+            return 0;
+        }
+
+        const visible = Math.min(
+            count,
+            TOOLBOX_SLOT_MAX_ITEMS
+        );
+
+        return visible * TOOLBOX_SLOT_ITEM_HEIGHT;
+    }
+
+    function syncToolboxSlot() {
+        const slot = getAppletSlot();
+
+        if (!slot) {
+            return;
+        }
+
+        const height = getToolboxSlotHeight(slot);
+
+        const isOpen = toolboxExpanded && height > 0;
+
+        slot.classList.toggle(
+            'afilia-toolbox-open',
+            isOpen
+        );
+
+        /* Nur schreiben, wenn sich der Wert ändert. Sonst meldet
+           der MutationObserver den eigenen Scan als Änderung. */
+
+        const maxHeight = isOpen
+            ? `min(${height}px, ${TOOLBOX_SLOT_MAX_VIEWPORT})`
+            : '0px';
+
+        if (slot.style.maxHeight !== maxHeight) {
+            slot.style.maxHeight = maxHeight;
+        }
+
+        const button = getToolboxButton();
+
+        if (!button) {
+            return;
+        }
+
+        button.setAttribute(
+            'aria-expanded',
+            isOpen ? 'true' : 'false'
+        );
+
+        button.classList.toggle(
+            'afilia-toolbox-open',
+            isOpen
+        );
+    }
+
+    function setToolboxExpanded(expanded) {
+        toolboxExpanded = !!expanded;
+
+        syncToolboxSlot();
+    }
+
+    function toggleToolboxSlot() {
+        setToolboxExpanded(!toolboxExpanded);
+    }
+
+    /* Applets hängen ihr Icon in den aufklappbaren Slot. Fehlt der
+       Slot, weil der Kern noch nicht oder nicht mehr hängt, wird
+       direkt in die Schnellzugriffsleiste zurückgefallen. */
+
+    function mountAppletButton(button) {
+        const slot = getAppletSlot();
+
+        if (slot) {
+            slot.appendChild(button);
+
+            syncToolboxSlot();
+
+            return slot;
+        }
+
+        const container = findQuickAccessRail();
+
+        if (!container) {
+            return null;
+        }
+
+        const spacer = container.querySelector(
+            ':scope > div.h-20'
+        );
+
+        if (spacer) {
+            spacer.after(button);
+        } else {
+            container.insertBefore(
+                button,
+                container.firstChild
+            );
+        }
+
+        return container;
+    }
+
+    function hookToolboxButton() {
+        const container = findQuickAccessRail();
+
+        if (!container) {
+            lastToolboxContainer = null;
+            return;
+        }
+
+        const button = container.querySelector(
+            `.${TOOLBOX_BUTTON_CLASS}`
+        );
+
+        const slot = container.querySelector(
+            `.${TOOLBOX_SLOT_CLASS}`
+        );
+
+        if (
+            container === lastToolboxContainer &&
+            button &&
+            slot
+        ) {
+            syncToolboxSlot();
+
+            return;
+        }
+
+        lastToolboxContainer = container;
+
+        if (button) {
+            button.remove();
+        }
+
+        if (slot) {
+            slot.remove();
+        }
+
+        const newButton = createToolboxButton();
+        const newSlot = createToolboxSlot();
+
+        const storeButton = container.querySelector(
+            `.${STORE_BUTTON_CLASS}`
+        );
+
+        if (storeButton) {
+            storeButton.after(newSlot);
+            storeButton.after(newButton);
+        } else {
+            container.insertBefore(
+                newSlot,
+                container.firstChild
+            );
+
+            container.insertBefore(
+                newButton,
+                container.firstChild
+            );
+        }
+
+        syncToolboxSlot();
+    }
+
     function closeStorePanel() {
         const overlay = document.getElementById(STORE_PANEL_ID);
 
@@ -1182,6 +1438,45 @@
             }
 
             /* =====================================================
+               Aufklappbarer Applet-Slot
+               ===================================================== */
+
+            .afilia-toolbox-slot {
+                flex-shrink: 0;
+                overflow-x: hidden;
+                overflow-y: auto;
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                scrollbar-width: none;
+                transition:
+                    max-height 240ms ease,
+                    opacity 160ms ease,
+                    visibility 0s linear 240ms;
+            }
+
+            .afilia-toolbox-slot.afilia-toolbox-open {
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transition:
+                    max-height 240ms ease,
+                    opacity 160ms ease,
+                    visibility 0s linear 0s;
+            }
+
+            .afilia-toolbox-slot::-webkit-scrollbar {
+                display: none;
+            }
+
+            /* Offen bleibt nur die Umrandung des Icons, damit sich
+               der aktive Zustand vom Store-Button abhebt. */
+
+            .afilia-toolbox-button.afilia-toolbox-open {
+                border-color: rgba(99, 102, 241, 0.85);
+            }
+
+            /* =====================================================
                Applet Store
                ===================================================== */
 
@@ -1386,6 +1681,7 @@
 
     function scan() {
         hookStoreButton();
+        hookToolboxButton();
 
         for (const applet of appletRegistry.values()) {
             if (
@@ -1405,6 +1701,11 @@
                 );
             }
         }
+
+        /* Erst nach den Applets: sie hängen ihre Icons in den
+           Slot, dessen Höhe danach berechnet wird. */
+
+        syncToolboxSlot();
     }
 
     function scheduleScan() {

@@ -63,7 +63,7 @@
     let repeatTimer = null;
     let watchTimer = null;
 
-    let lastButtonRail = null;
+    let lastButtonSlot = null;
 
     let statusBar = null;
     let lastStatusHost = null;
@@ -520,18 +520,14 @@
        UI
        ========================================================= */
 
-    function findQuickAccessRail() {
-        const icon = document.querySelector(
-            'i.fa-light-emergency-on'
-        );
-
-        if (!icon) {
+    function findButtonSlot() {
+        if (!api) {
             return null;
         }
 
-        return icon.closest(
-            'div.absolute.flex.flex-col'
-        ) || null;
+        /* Das Icon hängt im aufklappbaren Slot der Toolbox. */
+
+        return api.getAppletSlot();
     }
 
     function createButton() {
@@ -705,37 +701,29 @@
     }
 
     function hookButton() {
-        const rail = findQuickAccessRail();
+        const slot = findButtonSlot();
 
-        if (!rail) {
-            lastButtonRail = null;
+        if (!slot) {
+            lastButtonSlot = null;
 
             return;
         }
 
-        const existing = rail.querySelector(`.${BUTTON_CLASS}`);
+        const existing = slot.querySelector(`.${BUTTON_CLASS}`);
 
-        if (rail === lastButtonRail && existing) {
+        if (slot === lastButtonSlot && existing) {
             updateButton();
 
             return;
         }
 
-        lastButtonRail = rail;
+        lastButtonSlot = slot;
 
         if (existing) {
             existing.remove();
         }
 
-        const button = createButton();
-
-        const spacer = rail.querySelector(':scope > div.h-20');
-
-        if (spacer) {
-            spacer.after(button);
-        } else {
-            rail.insertBefore(button, rail.firstChild);
-        }
+        api.mountAppletButton(createButton());
 
         updateButton();
     }
@@ -918,7 +906,7 @@
         isActive = false;
         isBlocked = false;
         isGlobalMute = false;
-        lastButtonRail = null;
+        lastButtonSlot = null;
         statusBar = null;
         lastStatusHost = null;
         mode = MODE_AUDIO;

@@ -108,17 +108,13 @@
        ========================================================= */
 
     function findNotepadContainer() {
-        const icon = document.querySelector(
-            'i.fa-light-emergency-on'
-        );
-
-        if (!icon) {
+        if (!api) {
             return null;
         }
 
-        return icon.closest(
-            'div.absolute.flex.flex-col'
-        ) || null;
+        /* Das Icon hängt im aufklappbaren Slot der Toolbox. */
+
+        return api.getAppletSlot();
     }
 
     function createNotepadButton() {
@@ -171,20 +167,7 @@
             button.remove();
         }
 
-        const newButton = createNotepadButton();
-
-        const spacer = container.querySelector(
-            ':scope > div.h-20'
-        );
-
-        if (spacer) {
-            spacer.after(newButton);
-        } else {
-            container.insertBefore(
-                newButton,
-                container.firstChild
-            );
-        }
+        api.mountAppletButton(createNotepadButton());
     }
 
     function openNotepadPanel() {
