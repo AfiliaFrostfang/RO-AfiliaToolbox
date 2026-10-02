@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.12.0
+// @version      1.13.0
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
 // @discord      https://discord.gg/h6HEjwaMpW
@@ -23,7 +23,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.12.0';
+    const SCRIPT_VERSION = '1.13.0';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
@@ -335,8 +335,22 @@
         }
     }
 
+    /* Bisherige Applets bleiben eingeschaltet, solange nichts
+       gespeichert ist. Ein Applet kann sich mit
+       'defaultEnabled: false' selbst als zunächst ausgeschaltet
+       deklarieren - etwa eine Beta, die niemand automatisch
+       bekommt. */
+
     function isAppletEnabled(id) {
-        return appletStates[id] !== false;
+        const stored = appletStates[id];
+
+        if (typeof stored === 'boolean') {
+            return stored;
+        }
+
+        const applet = appletRegistry.get(id);
+
+        return !(applet && applet.defaultEnabled === false);
     }
 
     async function setAppletEnabled(id, enabled) {
@@ -1070,15 +1084,20 @@
             overlay.remove();
         }
     }
-
-    function openStorePanel() {
+function openStorePanel() {
         if (document.getElementById(STORE_PANEL_ID)) {
             return;
         }
 
+        /* Immer auf den normalen Funktionen starten, damit eine
+           aktivierte Beta nicht den Regelfall verdeckt. */
+
+        storeActiveTab = 'stable';
+
         const overlay = document.createElement('div');
 
         overlay.id = STORE_PANEL_ID;
+
         overlay.className = 'afilia-store-overlay';
 
         overlay.innerHTML = `
@@ -1101,6 +1120,10 @@
                     >
                         ×
                     </button>
+                </div>
+
+                <div class="afilia-store-tabs" role="tablist">
+                    ${renderStoreTabs()}
                 </div>
 
                 <div class="afilia-store-body">
@@ -1147,7 +1170,59 @@
 
         document.body.appendChild(overlay);
 
+        bindStoreTabs();
         bindStoreToggles();
+    }
+
+    /* Applets mit 'beta: true' bekommen einen eigenen Reiter.
+       Leere Reiter entfallen ganz. */
+
+    const STORE_TABS = [
+        { key: 'stable', title: 'Funktionen', hint: '' },
+        {
+            key: 'beta',
+            title: 'Beta',
+            hint: 'In Entwicklung – kann Fehler verursachen.'
+        }
+    ];
+
+    let storeActiveTab = 'stable';
+
+    function getStoreGroups() {
+        const applets = Array.from(appletRegistry.values());
+
+        return STORE_TABS.map(tab => {
+            const isBeta = tab.key === 'beta';
+
+            return {
+                ...tab,
+                applets: applets.filter(
+                    applet => Boolean(applet.beta) === isBeta
+                )
+            };
+        }).filter(group => group.applets.length > 0);
+    }
+
+    function renderStoreTabs() {
+        return getStoreGroups().map(group => {
+            const active = group.key === storeActiveTab;
+
+            return `
+                <button
+                    type="button"
+                    role="tab"
+                    class="afilia-store-tab${
+                        active ? ' afilia-store-tab-active' : ''
+                    }"
+                    data-store-tab="${group.key}"
+                    aria-selected="${active ? 'true' : 'false'}"
+                >
+                    ${group.title}
+
+                    <span class="afilia-store-tab-count">${group.applets.length}</span>
+                </button>
+            `;
+        }).join('');
     }
 
     function renderAppletRows() {
@@ -1159,41 +1234,102 @@
             `;
         }
 
-        return Array.from(appletRegistry.values()).map(applet => {
-            const enabled = isAppletEnabled(applet.id);
+        const group = getStoreGroups().find(
+            entry => entry.key === storeActiveTab
+        );
 
-            const version = applet.version
-                ? `v${escapeHTML(String(applet.version))}`
-                : '';
-
+        if (!group) {
             return `
-                <div class="afilia-store-applet" data-applet-id="${escapeHTML(applet.id)}">
-                    <div class="afilia-store-applet-icon">
-                        <i class="fa-solid fa-shapes"></i>
-                    </div>
-
-                    <div class="afilia-store-applet-info">
-                        <div class="afilia-store-applet-name">
-                            ${escapeHTML(applet.name)}
-
-                            ${version ? `<span class="afilia-store-applet-version">${version}</span>` : ''}
-                        </div>
-
-                        <div class="afilia-store-applet-desc">
-                            ${escapeHTML(applet.description || '')}
-                        </div>
-                    </div>
-
-                    <label class="afilia-store-switch">
-                        <input
-                            type="checkbox"
-                            ${enabled ? 'checked' : ''}
-                        >
-                        <span class="afilia-store-switch-slider"></span>
-                    </label>
+                <div class="afilia-store-empty">
+                    Keine Applets verfügbar.
                 </div>
             `;
-        }).join('');
+        }
+
+        /* Hinweis ist eine feste Konstante, kein Nutzertext. */
+
+        const hint = group.hint
+            ? `<div class="afilia-store-hint">${group.hint}</div>`
+            : '';
+
+        return hint + group.applets.map(renderAppletRow).join('');
+    }
+
+    function renderAppletRow(applet) {
+        const enabled = isAppletEnabled(applet.id);
+
+        const version = applet.version
+            ? `v${escapeHTML(String(applet.version))}`
+            : '';
+
+        return `
+            <div class="afilia-store-applet" data-applet-id="${escapeHTML(applet.id)}">
+                <div class="afilia-store-applet-icon">
+                    <i class="fa-solid fa-shapes"></i>
+                </div>
+
+                <div class="afilia-store-applet-info">
+                    <div class="afilia-store-applet-name">
+                        ${escapeHTML(applet.name)}
+
+                        ${version ? `<span class="afilia-store-applet-version">${version}</span>` : ''}
+                    </div>
+
+                    <div class="afilia-store-applet-desc">
+                        ${escapeHTML(applet.description || '')}
+                    </div>
+                </div>
+
+                <label class="afilia-store-switch">
+                    <input
+                        type="checkbox"
+                        ${enabled ? 'checked' : ''}
+                    >
+                    <span class="afilia-store-switch-slider"></span>
+                </label>
+            </div>
+        `;
+    }
+
+    function selectStoreTab(key) {
+        storeActiveTab = key;
+
+        const overlay = document.getElementById(STORE_PANEL_ID);
+
+        if (!overlay) {
+            return;
+        }
+
+        const tabs = overlay.querySelector('.afilia-store-tabs');
+        const body = overlay.querySelector('.afilia-store-body');
+
+        if (tabs) {
+            tabs.innerHTML = renderStoreTabs();
+        }
+
+        if (body) {
+            body.innerHTML = renderAppletRows();
+        }
+
+        bindStoreTabs();
+        bindStoreToggles();
+    }
+
+    function bindStoreTabs() {
+        const overlay = document.getElementById(STORE_PANEL_ID);
+
+        if (!overlay) {
+            return;
+        }
+
+        overlay.querySelectorAll('[data-store-tab]').forEach(tab => {
+            tab.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                selectStoreTab(tab.dataset.storeTab);
+            });
+        });
     }
 
     function bindStoreToggles() {
@@ -1545,6 +1681,67 @@
             .afilia-store-body {
                 padding: 16px;
                 overflow-y: auto;
+            }
+
+            .afilia-store-tabs {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 10px 16px;
+                background: #f9fafb;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .afilia-store-tab {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                padding: 6px 12px;
+                border: 1px solid transparent;
+                border-radius: 999px;
+                background: transparent;
+                color: #6b7280;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: color 0.15s ease, background 0.15s ease;
+            }
+
+            .afilia-store-tab:hover {
+                background: #f3f4f6;
+                color: #374151;
+            }
+
+            .afilia-store-tab-active,
+            .afilia-store-tab-active:hover {
+                border-color: #e5e7eb;
+                background: #ffffff;
+                color: #111827;
+                box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+            }
+
+            .afilia-store-tab-count {
+                padding: 1px 7px;
+                border-radius: 999px;
+                background: #e5e7eb;
+                color: #6b7280;
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .afilia-store-tab-active .afilia-store-tab-count {
+                background: #f3f4f6;
+                color: #374151;
+            }
+
+            .afilia-store-hint {
+                margin-bottom: 12px;
+                padding: 8px 10px;
+                border: 1px solid #fde68a;
+                border-radius: 8px;
+                background: #fffbeb;
+                color: #92400e;
+                font-size: 12px;
             }
 
             .afilia-store-empty {

@@ -14,5 +14,9 @@
     "mapDarkmode": {
         "file": "applets/mapDarkmode.js",
         "version": "1.0.0"
+    },
+    "buildtimeAlarm": {
+        "file": "applets/buildtimeAlarm.js",
+        "version": "1.0.0"
     }
 }

@@ -10,6 +10,8 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Alle Funktionen der Toolbox sind als einzelne „Applets" umgesetzt.
 - Über den Puzzle-Knopf in der Schnellzugriffsleiste lässt sich der Applet Store öffnen.
 - Dort kann jede Funktion einzeln aktiviert oder deaktiviert werden – Änderungen werden sofort übernommen.
+- Der Store ist in zwei Reiter aufgeteilt: „Funktionen" für die verfügbaren Applets und „Beta" für Functions in Entwicklung.
+- Reiter mit keiner einzigen Funktion werden automatisch ausgeblendet.
 - Die Aktivierung wird lokal gespeichert und beim nächsten Laden übernommen.
 
 ### AAO-Verwaltung
@@ -34,6 +36,15 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Ist der Ton aus, gibt es ausschließlich den roten Balken. Ist er an, kommen Balken und Alarmton dazu; im Modus „mit Ton“ wird der Ton alle 5 Minuten wiederholt.
 - Der Stummschalter des Spiels wird respektiert: Ist das Spiel global stummgeschaltet, bleibt der FMS-Alarm ohne Ton, der rote Balken aber weiterhin sichtbar. Die Glocke zeigt dann ein durchgestrichenes Lautsprecher-Icon.
 - Icon-Übersicht: Glocke = Ton an, Glocke mit Schrägstrich = Ton per Applet aus, Lautsprecher durchgestrichen = Spiel global stumm.
+
+### Bauzeit-Alarm (Beta)
+- In der Erweiterungsübersicht einer Wache erscheint neben dem laufenden Countdown eine **Alarm**-Schaltfläche. Ein Klick setzt den Alarm, ein zweiter entfernt ihn wieder.
+- Das Fenster (Hammer-Icon in der Toolbox) listet alle gesetzten Alarme mit **Wachenname**, Erweiterung und verbleibender Bauzeit auf, sortiert nach Dringlichkeit.
+- Die Vorwarnzeit ist wählbar (1/5/10/15/30 Minuten, 1 Stunde). Reicht die Restzeit nicht mehr dafür, feuert der Alarm sofort.
+- Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt. Der Alarm läuft also weiter, wenn das Stationsfenster inzwischen geschlossen ist.
+- Es werden **keine Daten über die API abgerufen** – alles wird ausschließlich aus dem Spielbild gelesen.
+- **Beta:** Das Applet liegt im eigenen Store-Reiter „Beta" und ist zunächst **ausgeschaltet**. Es muss dort bewusst aktiviert werden.
+- Einschränkung: Ein Alarm kann nur gesetzt werden, während das Stationsfenster mit dem Tab „Erweiterungen" offen ist. Das Fenster zeigt daher nur Alarme, die bereits gesetzt wurden – nicht alle Wachen im Spiel.
 
 ### Updates
 - Prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin.
@@ -68,6 +79,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 | `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
+| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm" (Beta): Alarm für die Restzeit einer Stationserweiterung mit Übersichtsfenster. Liest nur das Spielbild. |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |
 | `version.json` | Nur die aktuelle Kernversion, wird für den Update-Check verwendet. |
 

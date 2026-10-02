@@ -1,5 +1,8 @@
 {
     "toolbox": {
+        "1.13.0": [
+            "Applet Store: Der Store besitzt jetzt einen zweiten Reiter „Beta“. Applets mit dem Kennzeichen „beta“ stehen dort getrennt von den verfügbaren Funktionen."
+        ],
         "1.12.0":[
             "Technik: Applets werden nun in einem Icon zusammengefasst welche ausfahren wenn man darauf klickt."
         ],
@@ -95,6 +98,14 @@
             "1.0.0": [
                 "Erste Version: Blendet die Karte auf Wunsch ab. Das Sonne/Mond-Icon in der Toolbox schaltet zwischen dunkler und heller Karte um.",
                 "Die Einstellung wird lokal gespeichert und bleibt deshalb auch nach einem Neuladen des Spiels erhalten."
+            ]
+        },
+        "buildtimeAlarm": {
+            "1.0.0": [
+                "Beta: Neue Funktion „Bauzeit-Alarm“ – in der Erweiterungsübersicht einer Wache erscheint neben dem Countdown eine Schaltfläche, mit der sich ein Alarm setzen lässt.",
+                "Ein Fenster fasst alle gesetzten Alarme mit Wachenname, Erweiterung und verbleibender Bauzeit zusammen. Die Vorwarnzeit ist wählbar, der Alarmton kann abgeschaltet werden.",
+                "Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt, der Alarm läuft also auch weiter, wenn das Stationsfenster geschlossen wird. Es werden keine Daten über die API abgerufen.",
+                "Die Funktion ist als Beta markiert und zunächst ausgeschaltet. Sie muss im Applet Store bewusst aktiviert werden."
             ]
         }
     }
