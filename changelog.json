@@ -104,7 +104,7 @@
             "1.0.0": [
                 "Beta: Neue Funktion „Bauzeit-Alarm“ – in der Erweiterungsübersicht einer Wache erscheint neben dem Countdown eine Schaltfläche, mit der sich ein Alarm setzen lässt.",
                 "Ein Fenster fasst alle gesetzten Alarme mit Wachenname, Erweiterung und verbleibender Bauzeit zusammen. Die Vorwarnzeit ist wählbar, der Alarmton kann abgeschaltet werden.",
-                "Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt, der Alarm läuft also auch weiter, wenn das Stationsfenster geschlossen wird. Es werden keine Daten über die API abgerufen.",
+                "Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt, der Alarm läuft also auch weiter, wenn das Stationsfenster geschlossen wird. Es werden keine Daten über die API oder Server abgerufen.",
                 "Die Funktion ist als Beta markiert und zunächst ausgeschaltet. Sie muss im Applet Store bewusst aktiviert werden."
             ]
         }
