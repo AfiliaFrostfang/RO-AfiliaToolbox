@@ -105,6 +105,11 @@
             ]
         },
         "buildtimeAlarm": {
+            "1.1.0":[
+                "Beta to Stable: Bauzeit-Alarm wurde nun zu Stable bewegt.",
+                "Die frühste Fertigstellung einer Erweiterung wird nun mitsamt Wache in der Status Leiste angezeigt.",
+                "Warnzeiten können nun individuell in Minuten gesetzt werden."
+            ],
             "1.0.0": [
                 "Beta: Neue Funktion „Bauzeit-Alarm“ – in der Erweiterungsübersicht einer Wache erscheint neben dem Countdown eine Schaltfläche, mit der sich ein Alarm setzen lässt.",
                 "Ein Fenster fasst alle gesetzten Alarme mit Wachenname, Erweiterung und verbleibender Bauzeit zusammen. Die Vorwarnzeit ist wählbar, der Alarmton kann abgeschaltet werden.",

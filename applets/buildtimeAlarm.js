@@ -132,6 +132,7 @@
     const TOOLBOX_BUTTON_CLASS = 'afilia-buildtime-alarm-toolbox-button';
     const PANEL_ID = 'afilia-buildtime-alarm-window';
     const TOAST_ID = 'afilia-buildtime-alarm-toast';
+    const STATUS_CHIP_ID = 'afilia-buildtime-alarm-status-chip';
     const STYLES_ID = 'afilia-applet-buildtime-alarm-styles';
 
     /* =========================================================
@@ -1026,10 +1027,154 @@
         setAttributeIfChanged(button, 'aria-label', 'Bauzeit-Alarm setzen');
     }
 
+    function getEarliestTrackedAlarm() {
+        const candidates = alarms.filter(alarm => {
+            return !isDone(alarm);
+        });
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        candidates.sort((left, right) => {
+            return getRemaining(left) - getRemaining(right);
+        });
+
+        return candidates[0];
+    }
+
+    function findStatusHost() {
+        const moneySpan = Array.from(
+            document.querySelectorAll('span')
+        ).find(span => {
+            return readText(span) === 'Dein Geld';
+        });
+
+        if (!moneySpan) {
+            return null;
+        }
+
+        const moneyChip = moneySpan.closest(
+            'div.flex.items-center'
+        );
+
+        if (!moneyChip || !moneyChip.parentElement) {
+            return null;
+        }
+
+        return moneyChip.parentElement;
+    }
+
+    function createStatusChip() {
+        const chip = document.createElement('div');
+
+        chip.id = STATUS_CHIP_ID;
+        chip.className =
+            'flex items-center gap-1.5 sm:gap-2 bg-gray-900/80 ' +
+            'px-2 sm:px-3 py-1 sm:py-1.5 rounded-md ' +
+            'border border-orange-500/40 transition-colors ' +
+            'duration-200';
+
+        chip.title = 'Nächster Bauzeit-Alarm (verbleibend)';
+
+        chip.innerHTML = `
+            <i class="fa-solid fa-bell text-orange-400 text-xs sm:text-base"></i>
+
+            <div class="flex flex-col leading-none sm:leading-tight">
+                <span class="text-[9px] sm:text-[10px] text-gray-400">
+                    Bauzeit
+                </span>
+
+                <span
+                    class="font-semibold text-white tabular-nums"
+                    data-role="remaining"
+                >
+                    --
+                </span>
+
+                <span
+                    class="text-[8px] sm:text-[9px] text-gray-300 truncate"
+                    style="max-width: 96px; display: inline-block; vertical-align: bottom;"
+                    data-role="station"
+                >
+                </span>
+            </div>
+        `;
+
+        return chip;
+    }
+
+    function updateBuildStatusBar() {
+        const host = findStatusHost();
+        const chip = document.getElementById(STATUS_CHIP_ID);
+
+        const alarm = getEarliestTrackedAlarm();
+
+        if (!alarm) {
+            if (chip) {
+                chip.remove();
+            }
+
+            return;
+        }
+
+        if (!host) {
+            if (chip) {
+                chip.remove();
+            }
+
+            return;
+        }
+
+        let activeChip = chip;
+
+        if (!activeChip || activeChip.parentElement !== host) {
+            if (activeChip) {
+                activeChip.remove();
+            }
+
+            activeChip = createStatusChip();
+
+            host.appendChild(activeChip);
+        }
+
+        const remaining = getRemaining(alarm);
+
+        const timeNode = activeChip.querySelector(
+            '[data-role="remaining"]'
+        );
+
+        if (timeNode) {
+            setTextIfChanged(
+                timeNode,
+                formatDuration(remaining)
+            );
+        }
+
+        const stationNode = activeChip.querySelector(
+            '[data-role="station"]'
+        );
+
+        if (stationNode) {
+            setTextIfChanged(
+                stationNode,
+                alarm.stationName || ''
+            );
+        }
+
+        setAttributeIfChanged(
+            activeChip,
+            'title',
+            `${getDisplayName(alarm)} – verbleibend ${formatDuration(remaining)}`
+        );
+    }
+
     function updateButtons() {
         barButtons.forEach(updateBarButton);
 
         updateToolboxButton();
+
+        updateBuildStatusBar();
     }
 
     /* Der Knopf sitzt links neben der Prozentangabe, damit er
@@ -1386,6 +1531,15 @@
                         <span>Vorwarnzeit</span>
 
                         <select data-role="lead"></select>
+
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            data-role="lead-custom"
+                            placeholder="Min."
+                            hidden
+                        />
                     </label>
 
                     <label class="afilia-bta-field afilia-bta-field-check">
@@ -1452,12 +1606,68 @@
         }
 
         const lead = overlay.querySelector('[data-role="lead"]');
+        const leadCustom = overlay.querySelector(
+            '[data-role="lead-custom"]'
+        );
 
-        lead.innerHTML = renderLeadOptions(defaultLeadMs);
+        if (lead) {
+            lead.innerHTML = renderLeadOptions(defaultLeadMs);
 
-        lead.addEventListener('change', () => {
-            setDefaultLead(Number(lead.value));
-        });
+            const syncCustom = () => {
+                if (!leadCustom) {
+                    return;
+                }
+
+                leadCustom.hidden = lead.value !== 'custom';
+
+                if (lead.value === 'custom') {
+                    if (leadCustom.value === '') {
+                        leadCustom.value = String(defaultLeadMs / 60000);
+                    }
+                }
+            };
+
+            syncCustom();
+
+            lead.addEventListener('change', () => {
+                if (lead.value === 'custom') {
+                    if (leadCustom) {
+                        leadCustom.hidden = false;
+
+                        if (leadCustom.value === '') {
+                            leadCustom.value = String(defaultLeadMs / 60000);
+                        }
+
+                        leadCustom.focus();
+                    }
+
+                    return;
+                }
+
+                if (leadCustom) {
+                    leadCustom.hidden = true;
+                }
+
+                setDefaultLead(Number(lead.value));
+            });
+
+            if (leadCustom) {
+                const commitCustom = () => {
+                    const minutes = Number(leadCustom.value);
+
+                    if (!Number.isFinite(minutes) || minutes < 0) {
+                        leadCustom.value = String(defaultLeadMs / 60000);
+
+                        return;
+                    }
+
+                    setDefaultLead(Math.round(minutes * 60000));
+                };
+
+                leadCustom.addEventListener('change', commitCustom);
+                leadCustom.addEventListener('blur', commitCustom);
+            }
+        }
 
         const audioBox = overlay.querySelector('[data-role="audio"]');
 
@@ -1476,11 +1686,19 @@
     }
 
     function renderLeadOptions(selectedValue) {
-        return LEAD_PRESETS.map(preset => {
+        const isPreset = LEAD_PRESETS.some(preset => {
+            return preset.value === selectedValue;
+        });
+
+        const options = LEAD_PRESETS.map(preset => {
             const selected = preset.value === selectedValue ? ' selected' : '';
 
             return `<option value="${preset.value}"${selected}>${preset.label}</option>`;
         }).join('');
+
+        return options + `<option value="custom"${
+            isPreset ? '' : ' selected'
+        }>Individuell...</option>`;
     }
 
     function renderWindow() {
@@ -1495,8 +1713,10 @@
         const count = overlay.querySelector('[data-role="count"]');
         const lead = overlay.querySelector('[data-role="lead"]');
 
-        if (lead && lead.value !== String(defaultLeadMs)) {
-            lead.value = String(defaultLeadMs);
+        /* Das Lead-Dropdown beim normalen Tick nicht neu aufbauen,
+           sonst springt eine individuelle Auswahl zurück. */
+        if (lead && lead.options.length === 0) {
+            lead.innerHTML = renderLeadOptions(defaultLeadMs);
         }
 
         sortAlarms();
@@ -1575,6 +1795,16 @@
                     ${renderLeadOptions(alarm.leadMs)}
                 </select>
 
+                <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    data-role="lead-custom"
+                    value="${alarm.leadMs / 60000}"
+                    placeholder="Min."
+                    hidden
+                >
+
                 <button
                     type="button"
                     class="afilia-bta-remove"
@@ -1585,12 +1815,55 @@
             </div>
         `;
 
-        row.querySelector('[data-role="lead"]').addEventListener(
-            'change',
-            event => {
-                setLead(alarm, Number(event.target.value));
-            }
+        const rowLead = row.querySelector('[data-role="lead"]');
+        const rowLeadCustom = row.querySelector(
+            '[data-role="lead-custom"]'
         );
+
+        if (rowLead) {
+            if (rowLead.value === 'custom' && rowLeadCustom) {
+                rowLeadCustom.hidden = false;
+            }
+
+            rowLead.addEventListener('change', () => {
+                if (rowLead.value === 'custom') {
+                    if (rowLeadCustom) {
+                        rowLeadCustom.hidden = false;
+
+                        if (rowLeadCustom.value === '') {
+                            rowLeadCustom.value = String(alarm.leadMs / 60000);
+                        }
+
+                        rowLeadCustom.focus();
+                    }
+
+                    return;
+                }
+
+                if (rowLeadCustom) {
+                    rowLeadCustom.hidden = true;
+                }
+
+                setLead(alarm, Number(rowLead.value));
+            });
+
+            if (rowLeadCustom) {
+                const commitCustom = () => {
+                    const minutes = Number(rowLeadCustom.value);
+
+                    if (!Number.isFinite(minutes) || minutes < 0) {
+                        rowLeadCustom.value = String(alarm.leadMs / 60000);
+
+                        return;
+                    }
+
+                    setLead(alarm, Math.round(minutes * 60000));
+                };
+
+                rowLeadCustom.addEventListener('change', commitCustom);
+                rowLeadCustom.addEventListener('blur', commitCustom);
+            }
+        }
 
         row.querySelector('[data-role="remove"]').addEventListener(
             'click',
@@ -2119,11 +2392,15 @@
     function onScan() {
         hookBars();
         hookToolboxButton();
+
+        updateBuildStatusBar();
     }
 
     function dispose() {
         stopTick();
         stopRepeat();
+
+        document.getElementById(STATUS_CHIP_ID)?.remove();
 
         if (audio) {
             try {
@@ -2212,7 +2489,7 @@
         name: 'Bauzeit-Alarm',
         description:
             'Setzt einen Alarm für die Restzeit einer Stationserweiterung. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit. Liest nur das Spielbild, ruft keine API. (Beta – erst nach Feedback freischalten.)',
-        version: '1.0.0',
+        version: '1.1.0',
         beta: false,
         defaultEnabled: false,
         init,
