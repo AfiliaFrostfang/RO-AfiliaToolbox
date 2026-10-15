@@ -2213,7 +2213,7 @@
         description:
             'Setzt einen Alarm für die Restzeit einer Stationserweiterung. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit. Liest nur das Spielbild, ruft keine API. (Beta – erst nach Feedback freischalten.)',
         version: '1.0.0',
-        beta: true,
+        beta: false,
         defaultEnabled: false,
         init,
         onScan,
