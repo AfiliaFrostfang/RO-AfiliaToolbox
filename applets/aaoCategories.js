@@ -535,6 +535,151 @@
         renderDispatchPanel();
     }
 
+    const DEBUG = true;
+
+    function aaoLog(...args) {
+        if (DEBUG) {
+            console.debug('[Afilia AAO]', ...args);
+        }
+    }
+
+    function normalizeText(value) {
+        return String(value || '')
+            .replace(/\\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+    }
+
+    function elementText(element) {
+        return normalizeText(element?.textContent);
+    }
+
+    function findByText(root, selector, text, exact = false) {
+        const wanted = normalizeText(text);
+
+        if (!wanted) {
+            return null;
+        }
+
+        const nodes = Array.from(
+            (root || document).querySelectorAll(selector || '*')
+        );
+
+        return nodes.find(node => {
+            const current = elementText(node);
+
+            if (exact) {
+                return current === wanted;
+            }
+
+            return current.includes(wanted);
+        }) || null;
+    }
+
+    function listByPredicate(root, selector, predicate) {
+        return Array.from((root || document).querySelectorAll(selector || 'div'))
+            .filter(element => {
+                try {
+                    return !!predicate(element);
+                } catch {
+                    return false;
+                }
+            });
+    }
+
+    function getDialogCandidates() {
+        const selectors = [
+            '[role="dialog"][data-slot="sheet-content"]',
+            '[role="dialog"][data-slot="dialog-content"]',
+            '[role="dialog"]',
+            '[data-slot="sheet-content"]',
+            '[data-slot="dialog-content"]'
+        ];
+
+        const result = new Set();
+
+        for (const selector of selectors) {
+            document.querySelectorAll(selector).forEach(element => {
+                result.add(element);
+            });
+        }
+
+        return Array.from(result);
+    }
+
+    function isEditLikeButton(button) {
+        if (!button) {
+            return false;
+        }
+
+        const svg = button.querySelector('svg');
+        const svgClass = String(svg?.getAttribute('class') || '').toLowerCase();
+        const title = String(button.getAttribute('title') || '').toLowerCase();
+        const ariaLabel = String(button.getAttribute('aria-label') || '').toLowerCase();
+        const text = String(button.textContent || '').toLowerCase();
+
+        if (button.matches('[data-slot="button"]')) {
+            return true;
+        }
+
+        if (button.matches('[data-slot="alert-dialog-trigger"]')) {
+            return false;
+        }
+
+        return (
+            svgClass.includes('pencil') ||
+            svgClass.includes('edit') ||
+            svgClass.includes('square-pen') ||
+            title.includes('bearbeiten') ||
+            title.includes('edit') ||
+            ariaLabel.includes('bearbeiten') ||
+            ariaLabel.includes('edit') ||
+            /bearbeiten|edit/.test(text)
+        );
+    }
+
+    function isDeleteLikeButton(button) {
+        if (!button) {
+            return false;
+        }
+
+        const svg = button.querySelector('svg');
+        const svgClass = String(svg?.getAttribute('class') || '').toLowerCase();
+        const title = String(button.getAttribute('title') || '').toLowerCase();
+        const ariaLabel = String(button.getAttribute('aria-label') || '').toLowerCase();
+        const text = String(button.textContent || '').toLowerCase();
+
+        if (button.matches('[data-slot="alert-dialog-trigger"]')) {
+            return true;
+        }
+
+        return (
+            svgClass.includes('trash') ||
+            svgClass.includes('delete') ||
+            title.includes('löschen') ||
+            title.includes('loeschen') ||
+            title.includes('delete') ||
+            ariaLabel.includes('löschen') ||
+            ariaLabel.includes('loeschen') ||
+            ariaLabel.includes('delete') ||
+            /löschen|loeschen|delete/.test(text)
+        );
+    }
+
+    function hasNameLikeElement(element) {
+        return !!element.querySelector(
+            'span.font-semibold, div.font-semibold, ' +
+            '[class*="font-semibold"], [class*="font-bold"]'
+        );
+    }
+
+    function hasSummaryLikeElement(element) {
+        return !!element.querySelector(
+            'span.font-mono, div.font-mono, ' +
+            '[class*="font-mono"], [class*="text-gray"]'
+        );
+    }
+
     /* =========================================================
        AAO discovery
        ========================================================= */
@@ -563,6 +708,26 @@
     const SETTINGS_ROW_DELETE_SELECTOR =
         'button[data-slot="alert-dialog-trigger"]';
 
+    /* Selektoren basierend auf der aktuellen DOM (keine Guesses) */
+    const SETTINGS_DIALOG_SELECTOR =
+        '[role="dialog"][data-slot="sheet-content"]';
+    const SETTINGS_ROW_SELECTOR =
+        'div[data-slot="sortable-item"]';
+    const SETTINGS_LIST_SELECTOR =
+        'div[data-slot="sortable-content"]';
+    const SETTINGS_NAME_SELECTOR =
+        'span.font-semibold.text-sm.text-gray-900';
+    const SETTINGS_SUMMARY_SELECTOR =
+        'span.font-mono';
+
+    const DISPATCH_DIALOG_TEXT = 'Fahrzeuge alarmieren';
+    const DISPATCH_CARD_SELECTOR =
+        'div.flex.items-center.gap-3';
+    const DISPATCH_NAME_SELECTOR =
+        'div.font-semibold.text-sm.text-gray-900';
+    const DISPATCH_SUMMARY_SELECTOR =
+        'div.text-xs.text-gray-500.font-mono';
+
     /* -----------------------------------------------------
        Eine Zeile wird an ihren Bestandteilen erkannt: Name
        („span.font-semibold"), Kurzbeschreibung
@@ -576,7 +741,7 @@
        ----------------------------------------------------- */
 
     function isAAORow(element) {
-        if (!element || !element.matches('div')) {
+        if (!element || !element.matches(SETTINGS_ROW_SELECTOR)) {
             return false;
         }
 
@@ -584,21 +749,23 @@
             return false;
         }
 
-        if (!element.querySelector('span.font-semibold')) {
+        if (element.closest(`#${AAO_SETTINGS_PANEL_ID}`)) {
             return false;
         }
 
-        if (!element.querySelector('span.font-mono')) {
+        const nameElement = element.querySelector(SETTINGS_NAME_SELECTOR);
+
+        if (!nameElement || !nameElement.textContent.trim()) {
             return false;
         }
 
-        if (!element.querySelector(SETTINGS_ROW_EDIT_SELECTOR)) {
-            return false;
-        }
+        const editButton = element.querySelector(SETTINGS_ROW_EDIT_SELECTOR);
 
-        return !!element.querySelector(
+        const deleteButton = element.querySelector(
             SETTINGS_ROW_DELETE_SELECTOR
         );
+
+        return !!editButton || !!deleteButton;
     }
 
     /* -----------------------------------------------------
@@ -618,27 +785,9 @@
 
         const scope = findSettingsAAOSection() || document;
 
-        const candidates = Array.from(
-            scope.querySelectorAll('div')
+        return Array.from(
+            scope.querySelectorAll(SETTINGS_ROW_SELECTOR)
         ).filter(isAAORow);
-
-        if (candidates.length === 0) {
-            return [];
-        }
-
-        /* Die inhaltliche Pruefung sieht auch uebergeordnete
-           Knoten: der Listencontainer, der die Zeilen umschliesst,
-           erfuellt sie ebenso, weil er Name, Beschreibung und
-           Aktionen seiner Zeilen enthält. Eine Zeile ist deshalb
-           nur, was selbst keine weitere Zeile enthält. Das
-           grenzt die Zeilen zugleich von ihrem Container ab. */
-
-        return candidates.filter(candidate => {
-            return !candidates.some(other => {
-                return other !== candidate &&
-                    candidate.contains(other);
-            });
-        });
     }
 
     function findSettingsAAOContainer() {
@@ -647,17 +796,31 @@
         return rows.length > 0 ? rows[0].parentElement : null;
     }
 
+    function findSettingsAAOContainers() {
+        const rows = getSettingsAAORows();
+        const containers = new Set();
+
+        for (const row of rows) {
+            if (row.parentElement) {
+                containers.add(row.parentElement);
+            }
+        }
+
+        return Array.from(containers);
+    }
+
     function findSettingsDialog() {
         const dialogs = Array.from(
-            document.querySelectorAll(
-                '[role="dialog"][data-slot="sheet-content"]'
-            )
+            document.querySelectorAll(SETTINGS_DIALOG_SELECTOR)
         );
 
         return dialogs.find(dialog => {
-            return Array.from(dialog.querySelectorAll('h2')).some(h2 => {
-                return h2.textContent.trim() === 'Einstellungen';
-            });
+            const title = dialog.querySelector(
+                '[data-slot="sheet-title"]'
+            );
+
+            return !!title &&
+                elementText(title) === 'einstellungen';
         }) || null;
     }
 
@@ -696,26 +859,26 @@
 
     function findDispatchDialog() {
         const dialogs = Array.from(
-            document.querySelectorAll(
-                '[role="dialog"][data-slot="sheet-content"]'
-            )
+            document.querySelectorAll(SETTINGS_DIALOG_SELECTOR)
         );
 
         return dialogs.find(dialog => {
-            const search = dialog.querySelector(
-                'input[placeholder="AAO suchen..."], input[placeholder="Suchen..."]'
-            );
-
-            if (!search) {
-                return false;
-            }
-
-            return Array.from(dialog.querySelectorAll('h2'))
-                .some(h2 => {
-                    return h2.textContent.trim() ===
-                        'Fahrzeuge alarmieren';
-                });
+            return Array.from(dialog.querySelectorAll('h2')).some(h2 => {
+                return h2.textContent.trim() ===
+                    'Fahrzeuge alarmieren' ||
+                    h2.textContent.includes('Fahrzeuge alarmieren');
+            });
         }) || null;
+    }
+
+    function getDispatchSearchInput(dialog) {
+        if (!dialog) {
+            return null;
+        }
+
+        return dialog.querySelector(
+            'input[placeholder="AAO suchen..."]'
+        ) || dialog.querySelector('input[placeholder*="suchen" i]');
     }
 
     function findDispatchLists(dialog) {
@@ -723,18 +886,32 @@
             return [];
         }
 
-        const searchInput = dialog.querySelector(
-            'input[placeholder="AAO suchen..."], input[placeholder="Suchen..."]'
-        );
+        const searchInput = getDispatchSearchInput(dialog);
 
-        if (!searchInput) {
-            return [];
+        /* Kein Suchfeld ist kein harter Abbruch mehr. */
+        if (dialog.querySelector(`#${AAO_DISPATCH_PANEL_ID}`)) {
+            /* ignore */
         }
 
-        return Array.from(
+        const candidates = Array.from(
             dialog.querySelectorAll('div.space-y-2')
         ).filter(container => {
+            if (container.closest(`#${AAO_DISPATCH_PANEL_ID}`)) {
+                return false;
+            }
+
             return getDispatchCards(container).length > 0;
+        });
+
+        /* Nur innerste Container behalten. */
+        return candidates.filter(container => {
+            return !candidates.some(other => {
+                return (
+                    other !== container &&
+                    container.contains(other) &&
+                    getDispatchCards(other).length > 0
+                );
+            });
         });
     }
 
@@ -750,7 +927,7 @@
         return findDispatchLists(dialog).some(container => {
             return getDispatchCards(container).some(card => {
                 return !!card.querySelector(
-                    'div.font-semibold.text-sm.text-gray-900'
+                    DISPATCH_NAME_SELECTOR
                 );
             });
         });
@@ -761,90 +938,8 @@
             return false;
         }
 
-        /* -----------------------------------------------------
-           „Nach Wachen sortieren": Jede Karte ist ein Fahrzeug
-           und wird per Drag-and-Drop alarmiert. In diesem Modus
-           gibt es keine AAO-Kategorien.
-           ----------------------------------------------------- */
-
-        if (dialog.querySelector('[data-drag-vehicle-id]')) {
-            return false;
-        }
-
-        const controls = Array.from(
-            dialog.querySelectorAll(
-                'button, [role="button"], [role="switch"], input[type="checkbox"]'
-            )
-        );
-
-        const getLabel = control => (
-            control.getAttribute('aria-label') ||
-            control.getAttribute('title') ||
-            control.textContent ||
-            ''
-        )
-            .replace(/\s+/g, ' ')
-            .trim()
-            .toLowerCase();
-
-        const isAAOModeLabel = label =>
-            /\baao[\s-]?modus\b|\baao[\s-]?mode\b/i.test(label);
-
-        const isWatchSortLabel = label =>
-            /\bnach[\s-]wachen?(?:[\s-]sortieren)?\b|\bwachen?[\s-]sortieren\b|\bsort(?:ed)?\s*by\s+(?:station|watch)\b/i.test(label);
-
-        const isOff = control => {
-            const state = control.getAttribute('data-state');
-            const pressed = control.getAttribute('aria-pressed');
-            const checked = control.getAttribute('aria-checked');
-
-            return state === 'off' ||
-                state === 'unchecked' ||
-                pressed === 'false' ||
-                checked === 'false' ||
-                ('checked' in control && !control.checked);
-        };
-
-        const isOn = control => {
-            if (isOff(control)) {
-                return false;
-            }
-
-            const state = control.getAttribute('data-state');
-            const pressed = control.getAttribute('aria-pressed');
-            const checked = control.getAttribute('aria-checked');
-
-            return state === 'on' ||
-                state === 'checked' ||
-                pressed === 'true' ||
-                checked === 'true' ||
-                ('checked' in control && control.checked);
-        };
-
-        /* „Nach Wachen sortieren" ist explizit aktiviert -> AAO-Modus aus. */
-        for (const control of controls) {
-            if (
-                isWatchSortLabel(getLabel(control)) &&
-                isOn(control)
-            ) {
-                return false;
-            }
-        }
-
-        /* AAO-Modus-Umschalter vorhanden? */
-        const aaoControl = controls.find(control => {
-            return isAAOModeLabel(getLabel(control));
-        });
-
-        if (aaoControl) {
-            return !isOff(aaoControl);
-        }
-
-        /* Kein eindeutiger Umschalter gefunden: Nur wenn die sichtbaren
-           Karten tatsächlich AAO-Karten sind, AAO-Modus annehmen. */
         return hasAAOCards(dialog);
     }
-
     function removeDispatchPanel(dialog, list) {
         const panel = dialog && dialog.querySelector(
             `#${AAO_DISPATCH_PANEL_ID}`
@@ -852,6 +947,28 @@
 
         if (panel) {
             panel.remove();
+        }
+
+        /* Alle zuvor ausgeblendeten Container wieder einblenden,
+           auch Container ohne AAO-Karten (Moduswechsel). */
+        if (dialog) {
+            dialog.querySelectorAll('*').forEach(element => {
+                if (
+                    element &&
+                    element.style &&
+                    element.style.display === 'none'
+                ) {
+                    element.style.display = '';
+                }
+            });
+
+            dialog.querySelectorAll(
+                'div.space-y-2, div.flex-1, div.overflow-y-auto'
+            ).forEach(element => {
+                if (element) {
+                    element.style.display = '';
+                }
+            });
         }
 
         for (const candidate of findDispatchLists(dialog)) {
@@ -871,13 +988,23 @@
         }
 
         return Array.from(container.children).filter(child => {
-            return child.matches('[data-slot="card"]') ||
-                !!child.querySelector(
-                    'div.font-semibold.text-sm.text-gray-900'
-                );
+            if (!child || child.nodeType !== 1) {
+                return false;
+            }
+
+            if (
+                child.closest(`#${AAO_DISPATCH_PANEL_ID}`) ||
+                child.hasAttribute('data-afilia-aao-key')
+            ) {
+                return false;
+            }
+
+            return (
+                child.matches(DISPATCH_CARD_SELECTOR) &&
+                !!child.querySelector(DISPATCH_NAME_SELECTOR)
+            );
         });
     }
-
     function discoverAAOs() {
         let changed = false;
 
@@ -897,7 +1024,7 @@
 
             for (const row of rows) {
                 const nameElement = row.querySelector(
-                    'span.font-semibold'
+                    SETTINGS_NAME_SELECTOR
                 );
 
                 if (!nameElement) {
@@ -914,7 +1041,7 @@
                 seenSettingsKeys.add(key);
 
                 const summaryElement = row.querySelector(
-                    'span.font-mono'
+                    SETTINGS_SUMMARY_SELECTOR
                 );
 
                 const summary = summaryElement
@@ -993,7 +1120,7 @@
 
                 for (const card of cards) {
                     const nameElement = card.querySelector(
-                        'div.font-semibold.text-sm.text-gray-900'
+                        DISPATCH_NAME_SELECTOR
                     );
 
                     if (!nameElement) {
@@ -1009,7 +1136,7 @@
                     const key = api.getAAOKey(name);
 
                     const summaryElement = card.querySelector(
-                        'div.text-xs.text-gray-500.font-mono'
+                        DISPATCH_SUMMARY_SELECTOR
                     );
 
                     const summary = summaryElement
@@ -1131,7 +1258,7 @@
 
                 for (const card of cards) {
                     const nameElement = card.querySelector(
-                        'div.font-semibold.text-sm.text-gray-900'
+                        DISPATCH_NAME_SELECTOR
                     );
 
                     if (!nameElement) {
@@ -1158,7 +1285,7 @@
         if (!original || !original.isConnected) {
             for (const row of getSettingsAAORows()) {
                 const nameElement = row.querySelector(
-                    'span.font-semibold'
+                    SETTINGS_NAME_SELECTOR
                 );
 
                 if (!nameElement) {
@@ -1477,7 +1604,8 @@
             return;
         }
 
-        const list = findDispatchList(dialog);
+        const lists = findDispatchLists(dialog);
+        const list = lists[0] || null;
 
         if (!list) {
             return;
@@ -1499,7 +1627,9 @@
             list.parentElement.insertBefore(panel, list);
         }
 
-        list.style.display = 'none';
+        for (const nativeList of lists) {
+            nativeList.style.display = 'none';
+        }
 
         panel.innerHTML = '';
 
@@ -1681,7 +1811,7 @@
             return;
         }
 
-        const container = findSettingsAAOContainer();
+        const containers = findSettingsAAOContainers();
 
         /* -----------------------------------------------------
            Das Panel gehoert als Geschwister direkt unter den
@@ -1705,8 +1835,10 @@
             section.appendChild(panel);
         }
 
-        if (container) {
-            container.style.display = 'none';
+        for (const container of containers) {
+            if (container) {
+                container.style.display = 'none';
+            }
         }
 
         ensureAAOOrdersSynced();
@@ -2272,9 +2404,7 @@
        ========================================================= */
 
     function hookDispatchSearch(dialog) {
-        const input = dialog?.querySelector(
-            'input[placeholder="AAO suchen..."], input[placeholder="Suchen..."]'
-        );
+        const input = getDispatchSearchInput(dialog);
 
         if (!input) {
             return;
@@ -2303,10 +2433,64 @@
         await loadData();
 
         injectStyles();
+
+        window.__afiliaAAODiag = {
+            dump: () => {
+                const settingsDialog = findSettingsDialog();
+                const settingsSection = findSettingsAAOSection();
+                const settingsRows = getSettingsAAORows();
+                const dispatchDialog = findDispatchDialog();
+                const dispatchLists = dispatchDialog
+                    ? findDispatchLists(dispatchDialog)
+                    : [];
+                const dispatchCards = dispatchLists.reduce(
+                    (total, list) => total + getDispatchCards(list).length,
+                    0
+                );
+
+                console.group('[Afilia AAO Diagnostics]');
+                console.log('settingsDialog:', settingsDialog);
+                console.log('settingsSection:', settingsSection);
+                console.log('settingsRows:', settingsRows.length, settingsRows);
+                console.log('dispatchDialog:', dispatchDialog);
+                console.log('dispatchLists:', dispatchLists.length, dispatchLists);
+                console.log('dispatchCards:', dispatchCards);
+                console.log('catalogSize:', aaoCatalog.size);
+                console.log('categories:', categories);
+                console.log('assignments:', assignments);
+                console.groupEnd();
+
+                return {
+                    settingsDialog,
+                    settingsSection,
+                    settingsRows,
+                    dispatchDialog,
+                    dispatchLists,
+                    dispatchCards
+                };
+            }
+        };
+
+        aaoLog('initialized');
     }
 
     function onScan() {
         const catalogChanged = discoverAAOs();
+
+        if (DEBUG) {
+            const settingsSection = findSettingsAAOSection();
+            const dispatchDialog = findDispatchDialog();
+
+            if (!settingsSection && !dispatchDialog) {
+                /* nur selten loggen */
+                if (!window.__afiliaAAODebugLogged) {
+                    window.__afiliaAAODebugLogged = true;
+                    console.info(
+                        '[Afilia AAO] No settings/dispatch dialog found. Run window.__afiliaAAODiag.dump() in the console and paste the output.'
+                    );
+                }
+            }
+        }
 
         /* -----------------------------------------------------
            Settings
@@ -2431,7 +2615,7 @@
         name: 'AAO-Kategorien',
         description:
             'Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht.',
-        version: '1.0.3',
+        version: '1.1.0',
         init,
         onScan,
         dispose
