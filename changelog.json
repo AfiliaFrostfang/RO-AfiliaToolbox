@@ -62,6 +62,10 @@
     },
     "applets": {
         "aaoCategories": {
+            "1.1.0":[
+                "Selektoren an die aktuelle DOM-Struktur angepasst (Settings-Dialog, AAO-Tab, Dispatch-Fenster, Karten, Bearbeiten-/Löschen-Buttons).",
+                "AAO-Modus lässt sich wieder korrekt ausschalten – das Alarmierungsfenster fällt jetzt wieder auf die native Ansicht zurück (kein leeres Fenster mehr)"
+            ],
             "1.0.3": [
                 "AAO-Kategorien: Bugfix – Es konnte vorkommen, dass die Kategorien gar nicht erst angezeigt wurden. Die AAO-Liste wird jetzt an ihrem Inhalt erkannt statt an technischen Attributen des Spiels, die sich geändert haben. Dadurch funktionieren die Kategorien wieder unabhängig davon, ob eine oder mehrere AAOs angelegt sind.",
                 "Das Kategorie-Panel wird jetzt als eigenständiger Bereich neben der AAO-Liste eingefügt und blendet diese nur noch aus. Vorher konnte es dadurch selbst mit ausgeblendet werden."
