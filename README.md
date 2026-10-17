@@ -46,6 +46,13 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - **Beta:** Das Applet liegt im eigenen Store-Reiter „Beta" und ist zunächst **ausgeschaltet**. Es muss dort bewusst aktiviert werden.
 - Einschränkung: Ein Alarm kann nur gesetzt werden, während das Stationsfenster mit dem Tab „Erweiterungen" offen ist. Das Fenster zeigt daher nur Alarme, die bereits gesetzt wurden – nicht alle Wachen im Spiel.
 
+### Schnellalarm
+- Alarmiert die ausgewählten Fahrzeuge per Tastendruck, ohne den **Alarmieren**-Knopf im Fenster „Fahrzeuge alarmieren“ anzuklicken.
+- Standard ist **STRG**: gedrückt halten und wieder loslassen – solange dabei keine andere Taste gedrückt wird (STRG+C, STRG+V usw. lösen also nichts aus).
+- Die Taste ist **frei wählbar**: Über das Tastatur-Icon in der Toolbox lässt sich eine eigene Taste oder Kombination (z. B. STRG + K) aufnehmen.
+- Die Auswahl wird lokal gespeichert und bleibt nach einem Neuladen erhalten.
+- Einfache Tasten ohne Modifikatoren feuern nicht, während in einem Eingabefeld getippt wird.
+
 ### Updates
 - Prüft beim Start die `version.json` auf GitHub Pages und weist auf Updates hin.
 - Zeigt nach einem Update ein Popup mit den Neuerungen der Toolbox und der Applets.
@@ -80,6 +87,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 | `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
 | `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm" (Beta): Alarm für die Restzeit einer Stationserweiterung mit Übersichtsfenster. Liest nur das Spielbild. |
+| `applets/alarmHotkey.js` | Applet „Schnellalarm": Alarmiert die ausgewählten Fahrzeuge per frei wählbarer Taste (standardmäßig STRG). |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |
 | `version.json` | Nur die aktuelle Kernversion, wird für den Update-Check verwendet. |
 

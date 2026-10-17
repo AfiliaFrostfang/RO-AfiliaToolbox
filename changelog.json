@@ -116,6 +116,13 @@
                 "Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt, der Alarm läuft also auch weiter, wenn das Stationsfenster geschlossen wird. Es werden keine Daten über die API oder Server abgerufen.",
                 "Die Funktion ist als Beta markiert und zunächst ausgeschaltet. Sie muss im Applet Store bewusst aktiviert werden."
             ]
+        },
+        "alarmHotkey": {
+            "1.0.0": [
+                "Erste Version: Schnellalarmierung per frei wählbarer Taste – öffne das Fenster „Fahrzeuge alarmieren“, wähle Fahrzeuge aus und drücke die Taste, ohne den Alarmieren-Knopf anzuklicken.",
+                "Standard ist STRG (gedrückt halten und loslassen, solange keine andere Taste benutzt wird). Über das Tastatur-Icon lässt sich jede beliebige Taste oder Kombination (z. B. STRG + K) aufnehmen.",
+                "Die gewählte Taste wird lokal gespeichert. Einfache Tasten ohne Modifikatoren lösen nicht aus, während in einem Eingabefeld getippt wird."
+            ]
         }
     }
 }
