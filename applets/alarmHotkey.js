@@ -451,7 +451,7 @@
             }
         } catch (error) {
             console.warn(
-                '[Afilia Toolbox] Schnellalarm-Taste nicht lesbar:',
+                '[Afilia Toolbox] Tap Alarm-Taste nicht lesbar:',
                 error
             );
         }
@@ -464,7 +464,7 @@
             await api.dbSet(HOTKEY_STORE_KEY, hotkey);
         } catch (error) {
             console.warn(
-                '[Afilia Toolbox] Schnellalarm-Taste nicht gespeichert:',
+                '[Afilia Toolbox] Tap Alarm-Taste nicht gespeichert:',
                 error
             );
         }
@@ -706,7 +706,7 @@
 
     function updateButtonTitle() {
         const title =
-            `Schnellalarm – aktuelle Taste: ${formatHotkey(hotkey)}. ` +
+            `Tap Alarm – aktuelle Taste: ${formatHotkey(hotkey)}. ` +
             'Klicken, um die Taste zu ändern.';
 
         document.querySelectorAll(`.${BUTTON_CLASS}`)
@@ -798,12 +798,12 @@
         panel.className = 'afilia-alarm-hotkey-panel';
 
         panel.setAttribute('role', 'dialog');
-        panel.setAttribute('aria-label', 'Schnellalarm');
+        panel.setAttribute('aria-label', 'Tap Alarm');
 
         panel.innerHTML = `
             <div class="afilia-alarm-hotkey-header">
                 <span class="afilia-alarm-hotkey-title">
-                    Schnellalarm
+                    Tap Alarm
                 </span>
 
                 <button
