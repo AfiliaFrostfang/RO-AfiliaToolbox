@@ -10,8 +10,10 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Alle Funktionen der Toolbox sind als einzelne „Applets" umgesetzt.
 - Über den Puzzle-Knopf in der Schnellzugriffsleiste lässt sich der Applet Store öffnen.
 - Dort kann jede Funktion einzeln aktiviert oder deaktiviert werden – Änderungen werden sofort übernommen.
-- Der Store ist in zwei Reiter aufgeteilt: „Funktionen" für die verfügbaren Applets und „Beta" für Functions in Entwicklung.
-- Reiter mit keiner einzigen Funktion werden automatisch ausgeblendet.
+- Der Store ist zweispaltig aufgebaut: Links liegt eine Kategorie-Leiste, rechts die passenden Applets.
+- Die Applets sind in Kategorien sortiert und in Abschnitte gruppiert: **Einsatz** (Alarmierung, AAO), **Wache** (Wachenbau) und **Oberfläche** (Karte, Notizen). Jede Kategorie zeigt die Anzahl ihrer Applets.
+- Über das Suchfeld lassen sich die Funktionen nach Name und Beschreibung filtern. Zusätzlich stehen die Filter „Alle", „Aktiv" und „Inaktiv" sowie ein Zähler der aktiven Funktionen bereit.
+- Suche und Filter ändern nur die Anzeige, **nie** den Zustand eines Applets.
 - Die Aktivierung wird lokal gespeichert und beim nächsten Laden übernommen.
 
 ### AAO-Verwaltung
@@ -37,14 +39,13 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Der Stummschalter des Spiels wird respektiert: Ist das Spiel global stummgeschaltet, bleibt der FMS-Alarm ohne Ton, der rote Balken aber weiterhin sichtbar. Die Glocke zeigt dann ein durchgestrichenes Lautsprecher-Icon.
 - Icon-Übersicht: Glocke = Ton an, Glocke mit Schrägstrich = Ton per Applet aus, Lautsprecher durchgestrichen = Spiel global stumm.
 
-### Bauzeit-Alarm (Beta)
+### Bauzeit-Alarm
 - In der Erweiterungsübersicht einer Wache erscheint neben dem laufenden Countdown eine **Alarm**-Schaltfläche. Ein Klick setzt den Alarm, ein zweiter entfernt ihn wieder.
 - Das Fenster (Hammer-Icon in der Toolbox) listet alle gesetzten Alarme mit **Wachenname**, Erweiterung und verbleibender Bauzeit auf, sortiert nach Dringlichkeit.
 - Die Vorwarnzeit ist wählbar (1/5/10/15/30 Minuten, 1 Stunde). Reicht die Restzeit nicht mehr dafür, feuert der Alarm sofort.
-- Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt. Der Alarm läuft also weiter, wenn das Stationsfenster inzwischen geschlossen ist.
+- Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt. Der Alarm läuft also weiter, wenn das Wachenfenster inzwischen geschlossen ist.
 - Es werden **keine Daten über die API abgerufen** – alles wird ausschließlich aus dem Spielbild gelesen.
-- **Beta:** Das Applet liegt im eigenen Store-Reiter „Beta" und ist zunächst **ausgeschaltet**. Es muss dort bewusst aktiviert werden.
-- Einschränkung: Ein Alarm kann nur gesetzt werden, während das Stationsfenster mit dem Tab „Erweiterungen" offen ist. Das Fenster zeigt daher nur Alarme, die bereits gesetzt wurden – nicht alle Wachen im Spiel.
+- Einschränkung: Ein Alarm kann nur gesetzt werden, während das Wachenfenster mit dem Tab „Erweiterungen" offen ist. Das Fenster zeigt daher nur Alarme, die bereits gesetzt wurden – nicht alle Wachen im Spiel.
 
 ### Schnellalarm
 - Alarmiert die ausgewählten Fahrzeuge per Tastendruck, ohne den **Alarmieren**-Knopf im Fenster „Fahrzeuge alarmieren“ anzuklicken.
@@ -86,7 +87,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 | `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
-| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm" (Beta): Alarm für die Restzeit einer Stationserweiterung mit Übersichtsfenster. Liest nur das Spielbild. |
+| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm" (Beta): Alarm für die Restzeit einer Wachenerweiterung mit Übersichtsfenster. Liest nur das Spielbild. |
 | `applets/alarmHotkey.js` | Applet „Schnellalarm": Alarmiert die ausgewählten Fahrzeuge per frei wählbarer Taste (standardmäßig STRG). |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |
 | `version.json` | Nur die aktuelle Kernversion, wird für den Update-Check verwendet. |

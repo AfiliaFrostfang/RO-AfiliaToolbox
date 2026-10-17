@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.13.0
+// @version      1.14.0
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
 // @discord      https://discord.gg/h6HEjwaMpW
@@ -23,7 +23,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.13.0';
+    const SCRIPT_VERSION = '1.14.0';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
@@ -1084,15 +1084,16 @@
             overlay.remove();
         }
     }
-function openStorePanel() {
+    function openStorePanel() {
         if (document.getElementById(STORE_PANEL_ID)) {
             return;
         }
 
-        /* Immer auf den normalen Funktionen starten, damit eine
-           aktivierte Beta nicht den Regelfall verdeckt. */
+        /* Beim Öffnen immer neutral starten. */
 
-        storeActiveTab = 'stable';
+        storeActiveCategory = 'all';
+        storeSearchQuery = '';
+        storeActiveFilter = 'all';
 
         const overlay = document.createElement('div');
 
@@ -1103,7 +1104,7 @@ function openStorePanel() {
         overlay.innerHTML = `
             <div class="afilia-store-panel">
                 <div class="afilia-store-header">
-                    <div>
+                    <div class="afilia-store-header-text">
                         <div class="afilia-store-title">
                             Applet Store
                         </div>
@@ -1117,17 +1118,56 @@ function openStorePanel() {
                         type="button"
                         class="afilia-store-close"
                         title="Schließen"
+                        aria-label="Schließen"
                     >
                         ×
                     </button>
                 </div>
 
-                <div class="afilia-store-tabs" role="tablist">
-                    ${renderStoreTabs()}
-                </div>
+                <div class="afilia-store-main">
+                    <aside class="afilia-store-sidebar">
+                        <div class="afilia-store-search">
+                            <i class="fa-solid fa-magnifying-glass afilia-store-search-icon" aria-hidden="true"></i>
 
-                <div class="afilia-store-body">
-                    ${renderAppletRows()}
+                            <input
+                                type="text"
+                                class="afilia-store-search-input"
+                                placeholder="Funktionen suchen..."
+                                aria-label="Funktionen suchen"
+                                autocomplete="off"
+                            >
+                        </div>
+
+                        <nav class="afilia-store-nav" aria-label="Kategorien">
+                            ${renderStoreNav()}
+                        </nav>
+                    </aside>
+
+                    <section class="afilia-store-content">
+                        <div class="afilia-store-content-head">
+                            <div class="afilia-store-content-heading">
+                                <div class="afilia-store-content-title">
+                                    ${getActiveStoreCategory().title}
+                                </div>
+
+                                <div class="afilia-store-content-subtitle">
+                                    ${getActiveStoreCategory().subtitle}
+                                </div>
+                            </div>
+
+                            <div class="afilia-store-counter" aria-live="polite">
+                                ${renderStoreCounter()}
+                            </div>
+                        </div>
+
+                        <div class="afilia-store-filters" role="group" aria-label="Applets filtern">
+                            ${renderStoreFilters()}
+                        </div>
+
+                        <div class="afilia-store-body">
+                            ${renderAppletRows()}
+                        </div>
+                    </section>
                 </div>
 
                 <div class="afilia-store-footer">
@@ -1170,59 +1210,237 @@ function openStorePanel() {
 
         document.body.appendChild(overlay);
 
-        bindStoreTabs();
+        bindStoreNav();
+        bindStoreToolbar();
         bindStoreToggles();
     }
 
-    /* Applets mit 'beta: true' bekommen einen eigenen Reiter.
-       Leere Reiter entfallen ganz. */
+    /* Funktionale Kategorien für die Sidebar. Sie werden rein im
+       Kern gepflegt und ändern die Applet-Metadaten nicht. */
 
-    const STORE_TABS = [
-        { key: 'stable', title: 'Funktionen', hint: '' },
+    const STORE_CATEGORIES = [
         {
-            key: 'beta',
-            title: 'Beta',
-            hint: 'In Entwicklung – kann Fehler verursachen.'
+            key: 'all',
+            title: 'Alle Funktionen',
+            subtitle: 'Alle verfügbaren Applets',
+            section: ''
+        },
+        {
+            key: 'alarmierung',
+            title: 'Alarmierung',
+            subtitle: 'Alarm-Hilfen für den Einsatz',
+            section: 'Einsatz'
+        },
+        {
+            key: 'aao',
+            title: 'AAO',
+            subtitle: 'Alarm-Ordnung verwalten',
+            section: 'Einsatz'
+        },
+        {
+            key: 'wachenbau',
+            title: 'Wachenbau',
+            subtitle: 'Hilfen beim Ausbau der Wache',
+            section: 'Wache'
+        },
+        {
+            key: 'karte',
+            title: 'Karte',
+            subtitle: 'Darstellung der Karte',
+            section: 'Oberfläche'
+        },
+        {
+            key: 'notizen',
+            title: 'Notizen',
+            subtitle: 'Eigene Notizen im Spiel',
+            section: 'Oberfläche'
+        },
+        {
+            key: 'sonstige',
+            title: 'Weitere',
+            subtitle: 'Nicht kategorisierte Applets',
+            section: 'Weitere'
         }
     ];
 
-    let storeActiveTab = 'stable';
+    /* Zuordnung Applet-ID -> Kategorie. Unbekannte Applets landen
+       automatisch unter "Weitere". */
 
-    function getStoreGroups() {
-        const applets = Array.from(appletRegistry.values());
+    const STORE_APPLET_CATEGORIES = {
+        alarmHotkey: 'alarmierung',
+        fmsAlert: 'alarmierung',
+        buildtimeAlarm: 'wachenbau',
+        aaoCategories: 'aao',
+        mapDarkmode: 'karte',
+        notepad: 'notizen'
+    };
 
-        return STORE_TABS.map(tab => {
-            const isBeta = tab.key === 'beta';
+    const STORE_FILTERS = [
+        { key: 'all', label: 'Alle' },
+        { key: 'active', label: 'Aktiv' },
+        { key: 'inactive', label: 'Inaktiv' }
+    ];
 
-            return {
-                ...tab,
-                applets: applets.filter(
-                    applet => Boolean(applet.beta) === isBeta
-                )
-            };
-        }).filter(group => group.applets.length > 0);
+    let storeActiveCategory = 'all';
+    let storeSearchQuery = '';
+    let storeActiveFilter = 'all';
+
+    /* Icon je Applet-ID für die Store-Darstellung. Bevorzugt wird
+       das Icon, das das Applet selbst in der Toolbox verwendet.
+       Unbekannte IDs fallen auf die generische Form zurück. */
+
+    const STORE_APPLET_ICONS = {
+        aaoCategories: 'fa-layer-group',
+        notepad: 'fa-note-sticky',
+        fmsAlert: 'fa-bell',
+        mapDarkmode: 'fa-moon',
+        buildtimeAlarm: 'fa-hammer',
+        alarmHotkey: 'fa-keyboard'
+    };
+
+    function getAppletCategory(id) {
+        return STORE_APPLET_CATEGORIES[id] || 'sonstige';
     }
 
-    function renderStoreTabs() {
-        return getStoreGroups().map(group => {
-            const active = group.key === storeActiveTab;
+    /* Kategorien mit ihren Applets. "Alle" enthält immer alles,
+       leere Kategorien entfallen ganz. */
+
+    function getStoreCategories() {
+        const applets = Array.from(appletRegistry.values());
+
+        return STORE_CATEGORIES.map(category => ({
+            ...category,
+            applets: category.key === 'all'
+                ? applets
+                : applets.filter(
+                    applet => getAppletCategory(applet.id) === category.key
+                )
+        })).filter(
+            category => category.key === 'all' || category.applets.length > 0
+        );
+    }
+
+    function getActiveStoreCategory() {
+        return getStoreCategories().find(
+            category => category.key === storeActiveCategory
+        ) || STORE_CATEGORIES[0];
+    }
+
+    function renderStoreNav() {
+        let html = '';
+        let section = null;
+
+        getStoreCategories().forEach(category => {
+            if (category.section && category.section !== section) {
+                section = category.section;
+
+                html += `
+                    <div class="afilia-store-nav-section">
+                        ${section}
+                    </div>
+                `;
+            }
+
+            const active = category.key === storeActiveCategory;
+
+            html += `
+                <button
+                    type="button"
+                    class="afilia-store-nav-item${
+                        active ? ' afilia-store-nav-item-active' : ''
+                    }"
+                    data-store-category="${category.key}"
+                    aria-pressed="${active ? 'true' : 'false'}"
+                >
+                    <span class="afilia-store-nav-text">
+                        <span class="afilia-store-nav-title">
+                            ${category.title}
+                        </span>
+
+                        <span class="afilia-store-nav-subtitle">
+                            ${category.subtitle}
+                        </span>
+                    </span>
+
+                    <span class="afilia-store-nav-count">
+                        ${category.applets.length}
+                    </span>
+                </button>
+            `;
+        });
+
+        return html;
+    }
+
+    function renderStoreFilters() {
+        return STORE_FILTERS.map(filter => {
+            const active = filter.key === storeActiveFilter;
 
             return `
                 <button
                     type="button"
-                    role="tab"
-                    class="afilia-store-tab${
-                        active ? ' afilia-store-tab-active' : ''
+                    class="afilia-store-filter${
+                        active ? ' afilia-store-filter-active' : ''
                     }"
-                    data-store-tab="${group.key}"
-                    aria-selected="${active ? 'true' : 'false'}"
+                    data-store-filter="${filter.key}"
+                    aria-pressed="${active ? 'true' : 'false'}"
                 >
-                    ${group.title}
-
-                    <span class="afilia-store-tab-count">${group.applets.length}</span>
+                    ${filter.label}
                 </button>
             `;
         }).join('');
+    }
+
+    /* Der Zähler zeigt immer alle registrierten Applets, nicht
+       nur die sichtbaren. */
+
+    function renderStoreCounter() {
+        const total = appletRegistry.size;
+
+        const enabled = Array.from(appletRegistry.values())
+            .filter(applet => isAppletEnabled(applet.id))
+            .length;
+
+        return `${enabled} / ${total} aktiv`;
+    }
+
+    /* Suche und Filter wirken nur auf die Anzeige, nie auf den
+       Zustand eines Applets. */
+
+    function getVisibleStoreApplets() {
+        const category = storeActiveCategory;
+
+        let applets = Array.from(appletRegistry.values());
+
+        if (category !== 'all') {
+            applets = applets.filter(
+                applet => getAppletCategory(applet.id) === category
+            );
+        }
+
+        const query = normalizeName(storeSearchQuery);
+
+        return applets.filter(applet => {
+            if (storeActiveFilter === 'active' &&
+                !isAppletEnabled(applet.id)) {
+                return false;
+            }
+
+            if (storeActiveFilter === 'inactive' &&
+                isAppletEnabled(applet.id)) {
+                return false;
+            }
+
+            if (!query) {
+                return true;
+            }
+
+            const haystack = normalizeName(
+                `${applet.name || ''} ${applet.description || ''}`
+            );
+
+            return haystack.includes(query);
+        });
     }
 
     function renderAppletRows() {
@@ -1234,25 +1452,21 @@ function openStorePanel() {
             `;
         }
 
-        const group = getStoreGroups().find(
-            entry => entry.key === storeActiveTab
-        );
+        const applets = getVisibleStoreApplets();
 
-        if (!group) {
+        if (applets.length === 0) {
             return `
                 <div class="afilia-store-empty">
-                    Keine Applets verfügbar.
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <div>Keine Funktion gefunden.</div>
+                    <div class="afilia-store-empty-hint">
+                        Prüfe deinen Suchbegriff, deine Kategorie oder den Filter.
+                    </div>
                 </div>
             `;
         }
 
-        /* Hinweis ist eine feste Konstante, kein Nutzertext. */
-
-        const hint = group.hint
-            ? `<div class="afilia-store-hint">${group.hint}</div>`
-            : '';
-
-        return hint + group.applets.map(renderAppletRow).join('');
+        return applets.map(renderAppletRow).join('');
     }
 
     function renderAppletRow(applet) {
@@ -1262,17 +1476,23 @@ function openStorePanel() {
             ? `v${escapeHTML(String(applet.version))}`
             : '';
 
+        const icon = STORE_APPLET_ICONS[applet.id] || 'fa-shapes';
+
+        const name = escapeHTML(applet.name);
+
         return `
             <div class="afilia-store-applet" data-applet-id="${escapeHTML(applet.id)}">
                 <div class="afilia-store-applet-icon">
-                    <i class="fa-solid fa-shapes"></i>
+                    <i class="fa-solid ${icon}" aria-hidden="true"></i>
                 </div>
 
                 <div class="afilia-store-applet-info">
                     <div class="afilia-store-applet-name">
-                        ${escapeHTML(applet.name)}
+                        ${name}
 
                         ${version ? `<span class="afilia-store-applet-version">${version}</span>` : ''}
+
+                        ${applet.beta ? '<span class="afilia-store-applet-beta">Beta</span>' : ''}
                     </div>
 
                     <div class="afilia-store-applet-desc">
@@ -1283,6 +1503,8 @@ function openStorePanel() {
                 <label class="afilia-store-switch">
                     <input
                         type="checkbox"
+                        role="switch"
+                        aria-label="${name} aktivieren"
                         ${enabled ? 'checked' : ''}
                     >
                     <span class="afilia-store-switch-slider"></span>
@@ -1291,8 +1513,8 @@ function openStorePanel() {
         `;
     }
 
-    function selectStoreTab(key) {
-        storeActiveTab = key;
+    function selectStoreCategory(key) {
+        storeActiveCategory = key;
 
         const overlay = document.getElementById(STORE_PANEL_ID);
 
@@ -1300,34 +1522,128 @@ function openStorePanel() {
             return;
         }
 
-        const tabs = overlay.querySelector('.afilia-store-tabs');
-        const body = overlay.querySelector('.afilia-store-body');
+        overlay.querySelectorAll('[data-store-category]').forEach(button => {
+            const active = button.dataset.storeCategory === key;
 
-        if (tabs) {
-            tabs.innerHTML = renderStoreTabs();
+            button.classList.toggle('afilia-store-nav-item-active', active);
+
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+
+        updateStoreHeading();
+        refreshStoreList();
+    }
+
+    /* Überschrift des Inhalts an die aktive Kategorie anpassen. */
+
+    function updateStoreHeading() {
+        const overlay = document.getElementById(STORE_PANEL_ID);
+
+        if (!overlay) {
+            return;
         }
+
+        const category = getActiveStoreCategory();
+
+        const title = overlay.querySelector('.afilia-store-content-title');
+        const subtitle = overlay.querySelector('.afilia-store-content-subtitle');
+
+        if (title) {
+            title.textContent = category.title;
+        }
+
+        if (subtitle) {
+            subtitle.textContent = category.subtitle;
+        }
+    }
+
+    /* Nur Liste und Zähler neu zeichnen, ohne das Suchfeld oder
+       den Fokus anzufassen. */
+
+    function refreshStoreList() {
+        const overlay = document.getElementById(STORE_PANEL_ID);
+
+        if (!overlay) {
+            return;
+        }
+
+        const body = overlay.querySelector('.afilia-store-body');
+        const counter = overlay.querySelector('.afilia-store-counter');
 
         if (body) {
             body.innerHTML = renderAppletRows();
         }
 
-        bindStoreTabs();
+        if (counter) {
+            counter.textContent = renderStoreCounter();
+        }
+
         bindStoreToggles();
     }
 
-    function bindStoreTabs() {
+    function bindStoreNav() {
         const overlay = document.getElementById(STORE_PANEL_ID);
 
         if (!overlay) {
             return;
         }
 
-        overlay.querySelectorAll('[data-store-tab]').forEach(tab => {
-            tab.addEventListener('click', event => {
+        overlay.querySelectorAll('[data-store-category]').forEach(button => {
+            button.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
 
-                selectStoreTab(tab.dataset.storeTab);
+                selectStoreCategory(button.dataset.storeCategory);
+            });
+        });
+    }
+
+    /* Suche und Filter genau einmal binden. Der aktive Filter wird
+       nur am Button umgeschaltet, damit keine doppelten Listener
+       entstehen. Das Suchfeld behält beim Tippen den Fokus. */
+
+    function syncStoreFilterState() {
+        const overlay = document.getElementById(STORE_PANEL_ID);
+
+        if (!overlay) {
+            return;
+        }
+
+        overlay.querySelectorAll('[data-store-filter]').forEach(button => {
+            const active = button.dataset.storeFilter === storeActiveFilter;
+
+            button.classList.toggle('afilia-store-filter-active', active);
+
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
+
+    function bindStoreToolbar() {
+        const overlay = document.getElementById(STORE_PANEL_ID);
+
+        if (!overlay) {
+            return;
+        }
+
+        const search = overlay.querySelector('.afilia-store-search-input');
+
+        if (search) {
+            search.addEventListener('input', () => {
+                storeSearchQuery = search.value;
+
+                refreshStoreList();
+            });
+        }
+
+        overlay.querySelectorAll('[data-store-filter]').forEach(button => {
+            button.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                storeActiveFilter = button.dataset.storeFilter;
+
+                syncStoreFilterState();
+                refreshStoreList();
             });
         });
     }
@@ -1349,9 +1665,48 @@ function openStorePanel() {
             }
 
             input.addEventListener('change', async () => {
+                const previous = isAppletEnabled(id);
                 const enabled = input.checked;
 
-                await toggleApplet(id, enabled);
+                /* Solange der letzte Klick noch gespeichert wird,
+                   wird nicht ein zweites Mal aktiviert. */
+
+                if (row.dataset.storeBusy === 'true') {
+                    input.checked = previous;
+
+                    return;
+                }
+
+                /* Ein Event, das den Zustand nicht ändert, darf kein
+                   erneutes Aktivieren auslösen. */
+
+                if (enabled === previous) {
+                    return;
+                }
+
+                row.dataset.storeBusy = 'true';
+
+                try {
+                    await toggleApplet(id, enabled);
+                } catch (error) {
+                    console.error(
+                        '[Afilia Toolbox] Applet toggle failed:',
+                        id,
+                        error
+                    );
+
+                    /* Speichern fehlgeschlagen: Zustand und Schalter
+                       auf den vorherigen Wert zurücksetzen. */
+
+                    appletStates[id] = previous;
+                    input.checked = previous;
+
+                    return;
+                } finally {
+                    row.dataset.storeBusy = 'false';
+                }
+
+                refreshStoreList();
             });
         });
     }
@@ -1624,194 +1979,421 @@ function openStorePanel() {
                 align-items: center;
                 justify-content: center;
                 padding: 20px;
-                background: rgba(17, 24, 39, 0.45);
+                background: rgba(8, 9, 13, 0.72);
             }
 
             .afilia-store-panel {
-                width: min(560px, 100%);
-                max-height: 78vh;
+                width: min(880px, 100%);
+                max-height: 82vh;
                 display: flex;
                 flex-direction: column;
-                border: 1px solid #e5e7eb;
+                border: 1px solid #303440;
                 border-radius: 14px;
-                background: #ffffff;
-                box-shadow: 0 20px 50px rgba(17, 24, 39, 0.35);
+                background: #17191F;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+                color: #F1F2F7;
                 overflow: hidden;
             }
 
             .afilia-store-header {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
                 gap: 12px;
-                padding: 14px 16px;
-                background: #f9fafb;
-                border-bottom: 1px solid #e5e7eb;
+                padding: 18px 20px;
+                border-bottom: 1px solid #303440;
+            }
+
+            .afilia-store-header-text {
+                flex: 1;
+                min-width: 0;
             }
 
             .afilia-store-title {
-                font-size: 16px;
+                font-size: 17px;
                 font-weight: 700;
-                color: #111827;
+                color: #F1F2F7;
             }
 
             .afilia-store-subtitle {
-                margin-top: 2px;
+                margin-top: 3px;
                 font-size: 12px;
-                color: #6b7280;
+                line-height: 1.4;
+                color: #A0A6B5;
             }
 
             .afilia-store-close {
-                width: 30px;
-                height: 30px;
-                border: 0;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 32px;
+                height: 32px;
+                border: 1px solid transparent;
                 border-radius: 8px;
                 background: transparent;
-                color: #6b7280;
+                color: #858B9A;
                 cursor: pointer;
                 font-size: 20px;
                 line-height: 1;
+                transition:
+                    color 0.15s ease,
+                    background 0.15s ease,
+                    border-color 0.15s ease;
             }
 
             .afilia-store-close:hover {
-                background: #e5e7eb;
-                color: #111827;
+                background: #222631;
+                color: #F1F2F7;
+            }
+
+            .afilia-store-main {
+                display: flex;
+                flex: 1 1 auto;
+                min-height: 0;
+            }
+
+            .afilia-store-sidebar {
+                flex: 0 0 232px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                padding: 14px 12px;
+                border-right: 1px solid #303440;
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: #303440 transparent;
+            }
+
+            .afilia-store-search {
+                position: relative;
+                display: flex;
+                align-items: center;
+            }
+
+            .afilia-store-search-icon {
+                position: absolute;
+                left: 11px;
+                color: #858B9A;
+                font-size: 12px;
+                pointer-events: none;
+            }
+
+            .afilia-store-search-input {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 8px 11px 8px 32px;
+                border: 1px solid #303440;
+                border-radius: 9px;
+                background: #1C1F27;
+                color: #F1F2F7;
+                font-size: 13px;
+                font-family: inherit;
+                outline: none;
+                transition:
+                    border-color 0.15s ease,
+                    box-shadow 0.15s ease;
+            }
+
+            .afilia-store-search-input::placeholder {
+                color: #858B9A;
+            }
+
+            .afilia-store-search-input:focus {
+                border-color: #7867F7;
+                box-shadow: 0 0 0 3px rgba(120, 103, 247, 0.18);
+            }
+
+            .afilia-store-nav {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+
+            .afilia-store-nav-section {
+                margin: 10px 10px 4px;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #858B9A;
+            }
+
+            .afilia-store-nav-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                box-sizing: border-box;
+                padding: 8px 10px;
+                border: 1px solid transparent;
+                border-radius: 9px;
+                background: transparent;
+                color: #A0A6B5;
+                text-align: left;
+                cursor: pointer;
+                font-family: inherit;
+                transition:
+                    color 0.15s ease,
+                    background 0.15s ease,
+                    border-color 0.15s ease;
+            }
+
+            .afilia-store-nav-item:hover {
+                background: #222631;
+                color: #F1F2F7;
+            }
+
+            .afilia-store-nav-item-active,
+            .afilia-store-nav-item-active:hover {
+                border-color: rgba(120, 103, 247, 0.45);
+                background: rgba(120, 103, 247, 0.12);
+                color: #F1F2F7;
+            }
+
+            .afilia-store-nav-text {
+                display: flex;
+                flex-direction: column;
+                gap: 1px;
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            .afilia-store-nav-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: inherit;
+            }
+
+            .afilia-store-nav-subtitle {
+                overflow: hidden;
+                font-size: 11px;
+                line-height: 1.35;
+                color: #858B9A;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .afilia-store-nav-count {
+                flex: 0 0 auto;
+                min-width: 20px;
+                padding: 1px 7px;
+                border-radius: 999px;
+                background: #262A33;
+                color: #858B9A;
+                font-size: 11px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            .afilia-store-nav-item-active .afilia-store-nav-count {
+                background: rgba(120, 103, 247, 0.22);
+                color: #CFC9FF;
+            }
+
+            .afilia-store-content {
+                display: flex;
+                flex: 1 1 auto;
+                flex-direction: column;
+                min-width: 0;
+            }
+
+            .afilia-store-content-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 16px 20px 12px;
+            }
+
+            .afilia-store-content-heading {
+                min-width: 0;
+            }
+
+            .afilia-store-content-title {
+                font-size: 15px;
+                font-weight: 700;
+                color: #F1F2F7;
+            }
+
+            .afilia-store-content-subtitle {
+                margin-top: 2px;
+                font-size: 12px;
+                line-height: 1.4;
+                color: #858B9A;
+            }
+
+            .afilia-store-counter {
+                flex: 0 0 auto;
+                padding: 4px 10px;
+                border: 1px solid #303440;
+                border-radius: 999px;
+                background: #1C1F27;
+                color: #A0A6B5;
+                font-size: 12px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+
+            .afilia-store-filters {
+                display: inline-flex;
+                flex-shrink: 0;
+                gap: 4px;
+                padding: 0 20px 12px;
+            }
+
+            .afilia-store-filter {
+                padding: 5px 12px;
+                border: 1px solid #303440;
+                border-radius: 8px;
+                background: transparent;
+                color: #A0A6B5;
+                font-size: 12px;
+                font-weight: 600;
+                font-family: inherit;
+                cursor: pointer;
+                transition:
+                    color 0.15s ease,
+                    background 0.15s ease,
+                    border-color 0.15s ease;
+            }
+
+            .afilia-store-filter:hover {
+                background: #222631;
+                color: #F1F2F7;
+            }
+
+            .afilia-store-filter-active,
+            .afilia-store-filter-active:hover {
+                border-color: rgba(120, 103, 247, 0.55);
+                background: rgba(120, 103, 247, 0.14);
+                color: #F1F2F7;
             }
 
             .afilia-store-body {
-                padding: 16px;
-                overflow-y: auto;
-            }
-
-            .afilia-store-tabs {
                 display: flex;
-                align-items: center;
-                gap: 6px;
-                padding: 10px 16px;
-                background: #f9fafb;
-                border-bottom: 1px solid #e5e7eb;
+                flex: 1 1 auto;
+                flex-direction: column;
+                gap: 10px;
+                min-height: 0;
+                padding: 0 20px 18px;
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: #303440 transparent;
             }
 
-            .afilia-store-tab {
-                display: inline-flex;
-                align-items: center;
-                gap: 7px;
-                padding: 6px 12px;
-                border: 1px solid transparent;
+            .afilia-store-body::-webkit-scrollbar,
+            .afilia-store-sidebar::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            .afilia-store-body::-webkit-scrollbar-thumb,
+            .afilia-store-sidebar::-webkit-scrollbar-thumb {
                 border-radius: 999px;
-                background: transparent;
-                color: #6b7280;
-                font-size: 13px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: color 0.15s ease, background 0.15s ease;
-            }
-
-            .afilia-store-tab:hover {
-                background: #f3f4f6;
-                color: #374151;
-            }
-
-            .afilia-store-tab-active,
-            .afilia-store-tab-active:hover {
-                border-color: #e5e7eb;
-                background: #ffffff;
-                color: #111827;
-                box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
-            }
-
-            .afilia-store-tab-count {
-                padding: 1px 7px;
-                border-radius: 999px;
-                background: #e5e7eb;
-                color: #6b7280;
-                font-size: 11px;
-                font-weight: 700;
-            }
-
-            .afilia-store-tab-active .afilia-store-tab-count {
-                background: #f3f4f6;
-                color: #374151;
-            }
-
-            .afilia-store-hint {
-                margin-bottom: 12px;
-                padding: 8px 10px;
-                border: 1px solid #fde68a;
-                border-radius: 8px;
-                background: #fffbeb;
-                color: #92400e;
-                font-size: 12px;
+                background: #303440;
             }
 
             .afilia-store-empty {
-                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 8px;
+                padding: 28px 20px;
                 text-align: center;
-                color: #6b7280;
+                color: #A0A6B5;
                 font-size: 13px;
+            }
+
+            .afilia-store-empty i {
+                color: #414550;
+                font-size: 20px;
+            }
+
+            .afilia-store-empty-hint {
+                font-size: 12px;
+                color: #858B9A;
             }
 
             .afilia-store-applet {
                 display: flex;
                 align-items: center;
                 gap: 12px;
-                padding: 12px;
-                border: 1px solid #e5e7eb;
+                padding: 13px 14px;
+                border: 1px solid #303440;
                 border-radius: 12px;
+                background: #1C1F27;
+                transition:
+                    border-color 0.15s ease,
+                    background 0.15s ease;
             }
 
-            .afilia-store-applet + .afilia-store-applet {
-                margin-top: 10px;
+            .afilia-store-applet:hover {
+                background: #222631;
+            }
+
+            .afilia-store-applet:focus-within {
+                border-color: #7867F7;
             }
 
             .afilia-store-applet-icon {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                flex-shrink: 0;
+                flex: 0 0 40px;
                 width: 40px;
                 height: 40px;
                 border-radius: 10px;
-                background: #eef2ff;
-                color: #6366f1;
+                background: #252343;
+                color: #B3A8FF;
                 font-size: 16px;
             }
 
             .afilia-store-applet-info {
-                flex: 1;
+                flex: 1 1 auto;
                 min-width: 0;
             }
 
             .afilia-store-applet-name {
                 display: flex;
                 align-items: center;
+                flex-wrap: wrap;
                 gap: 8px;
                 font-size: 14px;
-                font-weight: 700;
-                color: #111827;
+                font-weight: 600;
+                color: #F1F2F7;
             }
 
             .afilia-store-applet-version {
                 padding: 2px 7px;
-                border-radius: 999px;
-                background: #f3f4f6;
-                color: #6b7280;
+                border-radius: 6px;
+                background: #262A33;
+                color: #858B9A;
                 font-size: 11px;
                 font-weight: 600;
+            }
+
+            .afilia-store-applet-beta {
+                padding: 2px 7px;
+                border-radius: 6px;
+                background: rgba(120, 103, 247, 0.16);
+                color: #B3A8FF;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
             }
 
             .afilia-store-applet-desc {
                 margin-top: 3px;
                 font-size: 12px;
-                color: #6b7280;
-                line-height: 1.4;
+                color: #A0A6B5;
+                line-height: 1.45;
             }
 
             .afilia-store-switch {
                 position: relative;
-                flex-shrink: 0;
-                width: 42px;
-                height: 24px;
+                flex: 0 0 auto;
+                width: 40px;
+                height: 22px;
                 cursor: pointer;
             }
 
@@ -1826,26 +2408,26 @@ function openStorePanel() {
                 position: absolute;
                 inset: 0;
                 border-radius: 999px;
-                background: #d1d5db;
-                transition: background 120ms ease;
+                background: #414550;
+                transition: background 160ms ease;
             }
 
             .afilia-store-switch-slider::before {
                 position: absolute;
                 content: '';
-                width: 18px;
-                height: 18px;
+                width: 16px;
+                height: 16px;
                 top: 3px;
                 left: 3px;
                 border-radius: 50%;
-                background: #ffffff;
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-                transition: transform 120ms ease;
+                background: #FFFFFF;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+                transition: transform 160ms ease;
             }
 
             .afilia-store-switch input:checked
             + .afilia-store-switch-slider {
-                background: #ef4444;
+                background: #7867F7;
             }
 
             .afilia-store-switch input:checked
@@ -1855,17 +2437,86 @@ function openStorePanel() {
 
             .afilia-store-switch input:focus-visible
             + .afilia-store-switch-slider {
-                outline: 2px solid #ef4444;
+                outline: 2px solid #7867F7;
+                outline-offset: 2px;
+            }
+
+            .afilia-store-close:focus-visible,
+            .afilia-store-nav-item:focus-visible,
+            .afilia-store-filter:focus-visible {
+                outline: 2px solid #7867F7;
                 outline-offset: 2px;
             }
 
             .afilia-store-footer {
-                padding: 10px 16px;
-                border-top: 1px solid #e5e7eb;
-                background: #f9fafb;
-                color: #6b7280;
+                padding: 12px 20px;
+                border-top: 1px solid #303440;
+                color: #858B9A;
                 font-size: 12px;
                 text-align: center;
+            }
+
+            @media (max-width: 700px) {
+                .afilia-store-overlay {
+                    padding: 12px;
+                }
+
+                .afilia-store-main {
+                    flex-direction: column;
+                }
+
+                .afilia-store-sidebar {
+                    flex: 0 0 auto;
+                    gap: 10px;
+                    border-right: 0;
+                    border-bottom: 1px solid #303440;
+                    padding: 12px;
+                }
+
+                .afilia-store-nav {
+                    flex-direction: row;
+                    gap: 6px;
+                    overflow-x: auto;
+                    padding-bottom: 2px;
+                }
+
+                .afilia-store-nav-section {
+                    display: none;
+                }
+
+                .afilia-store-nav-item {
+                    flex: 0 0 auto;
+                    width: auto;
+                    padding: 7px 10px;
+                }
+
+                .afilia-store-nav-subtitle {
+                    display: none;
+                }
+
+                .afilia-store-content-head {
+                    padding: 14px 14px 10px;
+                }
+
+                .afilia-store-filters {
+                    flex-wrap: wrap;
+                    padding: 0 14px 10px;
+                }
+
+                .afilia-store-body {
+                    padding: 0 14px 14px;
+                }
+
+                .afilia-store-footer {
+                    padding: 12px 14px;
+                }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .afilia-store-panel *,
+                .afilia-store-panel *::before {
+                    transition: none !important;
+                }
             }
         `;
 

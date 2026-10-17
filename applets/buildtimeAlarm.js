@@ -11,7 +11,7 @@
    Datenquelle: ausschliesslich das DOM des Spiels. Es wird
    keine API abgerufen. Die verbleibende Bauzeit wird aus dem
    Baubalken gelesen und danach lokal weitergezaehlt, damit ein
-   Alarm auch weiterlaeuft, wenn das Stationsfenster zu ist.
+   Alarm auch weiterlaeuft, wenn das Wachenfenster zu ist.
 
    ----------------------------------------------
    DOM-Struktur, auf die sich dieses Applet stuetzt
@@ -37,7 +37,7 @@
 
    Die Karte darunter (div.relative.flex... mit ring-2
    ring-orange-500) nennt die Erweiterung in einem h3.
-   Der Stationsname und eine stabile Support-ID stehen im
+   Der Wachenname und eine stabile Support-ID stehen im
    Sheet-Kopf (h2[data-slot="sheet-title"]).
    ========================================================= */
 
@@ -105,7 +105,7 @@
         /* Kopf des Sheets mit Name und Support-ID. */
         sheetTitle: 'h2[data-slot="sheet-title"]',
 
-        /* Der Stationsname ist der einzige klickbare Text im
+        /* Der Wachenname ist der einzige klickbare Text im
            Titelbereich. Die Support-ID steckt im aria-label
            des Kopier-Knopfes daneben. */
         stationName: 'span.cursor-pointer',
@@ -323,7 +323,7 @@
         return candidates.sort((a, b) => b.length - a.length)[0] || '';
     }
 
-    /* Findet das Sheet mit der Stationsanzeige. Der Bauzeit-
+    /* Findet das Sheet mit der Wachenanzeige. Der Bauzeit-
        Anker ist das eigentliche Kriterium: ohne ihn gibt es
        nichts zu ueberwachen, auch wenn das Sheet offen ist. */
 
@@ -464,7 +464,7 @@
 
     /* Die beim Setzen gelesene Restzeit wird um die seitdem
        vergangene Zeit verkuerzt. So laeuft der Alarm auch
-       weiter, wenn das Stationsfenster inzwischen zu ist. */
+       weiter, wenn das Wachenfenster inzwischen zu ist. */
 
     function getRemaining(alarm, now) {
         const current = now === undefined ? Date.now() : now;
@@ -1210,7 +1210,7 @@
         const station = findStationContext();
 
         if (!station) {
-            /* Ohne Stationsnamen laesst sich der Balken nicht
+            /* Ohne Wachennamen laesst sich der Balken nicht
                zuordnen. Lieber keine Schaltflaeche anbieten als
                eine, die ins Leere zeigt. */
 
@@ -2471,7 +2471,7 @@
 
         if (rows.length === 0) {
             console.warn(
-                '[Afilia Toolbox] Kein Baubalken gefunden. Erwartet wird der Text "%s" im geoeffneten Stationsfenster, Tab „Erweiterungen".',
+                '[Afilia Toolbox] Kein Baubalken gefunden. Erwartet wird der Text "%s" im geoeffneten Wachenfenster, Tab „Erweiterungen".',
                 SELECTORS.buildtimeLabel
             );
         }
@@ -2488,7 +2488,7 @@
         id: 'buildtimeAlarm',
         name: 'Bauzeit-Alarm',
         description:
-            'Setzt einen Alarm für die Restzeit einer Stationserweiterung. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit. Liest nur das Spielbild, ruft keine API. (Beta – erst nach Feedback freischalten.)',
+            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit.',
         version: '1.1.0',
         beta: false,
         defaultEnabled: false,
