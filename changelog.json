@@ -1,5 +1,8 @@
 {
     "toolbox": {
+        "1.14.1":[
+            "Kontaktdatenänderung."
+        ],
         "1.14.0": [
             "Applet Store: Neues Layout mit einer Kategorie-Leiste links. Die Funktionen sind jetzt in Kategorien (Alle Funktionen, Alarmierung, AAO, Wachenbau, Karte, Notizen) einsortiert und in Abschnitte (Einsatz, Wache, Oberfläche, usw.) gruppiert.",
             "Applet Store: Neu sind eine Suche sowie die Filter „Alle“, „Aktiv“ und „Inaktiv“ und ein Zähler, der zeigt, wie viele Funktionen gerade aktiv sind."

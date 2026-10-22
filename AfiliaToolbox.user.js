@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.14.0
+// @version      1.14.1
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
-// @discord      https://discord.gg/h6HEjwaMpW
+// @discord      afiliafrostfang
 // @match        https://game.rescue-operator.com/*
 // @updateURL    https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
 // @downloadURL  https://afiliafrostfang.github.io/RO-AfiliaToolbox/AfiliaToolbox.user.js
@@ -23,7 +23,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.14.0';
+    const SCRIPT_VERSION = '1.14.1';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
