@@ -1,5 +1,8 @@
 {
     "toolbox": {
+        "1.14.2":[
+            "Beschreibungsanpassung",
+        ],
         "1.14.1":[
             "Kontaktdatenänderung."
         ],
