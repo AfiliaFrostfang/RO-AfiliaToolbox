@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Afilia Toolbox
 // @namespace    https://afiliafrostfang.de/
-// @version      1.14.1
+// @version      1.14.2
 // @description  Afilia Toolbox for Rescue Operator with an Applet Store.
 // @author       AfiliaFrostfang
 // @discord      afiliafrostfang
@@ -23,7 +23,7 @@
     const DB_VERSION = 1;
     const STORE_NAME = 'settings';
     const SCRIPT_NAME = 'Afilia Toolbox';
-    const SCRIPT_VERSION = '1.14.1';
+    const SCRIPT_VERSION = '1.14.2';
     const UPDATE_MANIFEST_URL =
         'https://afiliafrostfang.github.io/RO-AfiliaToolbox/version.json';
     const APPLET_MANIFEST_URL =
@@ -1228,7 +1228,7 @@
         {
             key: 'alarmierung',
             title: 'Alarmierung',
-            subtitle: 'Alarm-Hilfen für den Einsatz',
+            subtitle: 'Hilfen für Einsätze und Alarmierung',
             section: 'Einsatz'
         },
         {
