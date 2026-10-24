@@ -112,6 +112,11 @@
             ]
         },
         "buildtimeAlarm": {
+            "1.2.1": [
+                "Neu: Nach einem abgeschlossenen Leitstellen-Ausbau erscheint ein Hinweis, den Einsatzradius anzupassen, damit Einsätze weiterhin für die Rangliste zählen.",
+                "Der Hinweis wird aus dem beobachteten Ausbau lokal weitergezählt und erscheint deshalb auch, wenn das Leitstellen-Fenster vorher geschlossen wurde.",
+                "Der Hinweis lässt sich im Bauzeit-Alarm-Fenster über „Einsatzradius-Hinweis“ abschalten oder direkt im Popup dauerhaft deaktivieren."
+            ],
             "1.2.0": [
                 "Neu: Der Bauzeit-Alarm unterstützt jetzt auch den Ausbau der Leitstelle (Dispatch Area). Neben dem Countdown im Leitstellen-Fenster erscheint dieselbe Alarm-Schaltfläche.",
                 "Die Leitstelle wird in der Alarmübersicht und der Statusleiste mit dem Ziel-Level angezeigt. Die Restzeit wird wie bei Wachenerweiterungen lokal weitergezählt."

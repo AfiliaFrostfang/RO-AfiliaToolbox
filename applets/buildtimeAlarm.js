@@ -65,6 +65,8 @@
     const ALARMS_STORE_KEY = 'buildtimeAlarmAlarms';
     const DEFAULT_LEAD_STORE_KEY = 'buildtimeAlarmDefaultLead';
     const AUDIO_STORE_KEY = 'buildtimeAlarmAudio';
+    const DISPATCH_WATCH_STORE_KEY = 'buildtimeAlarmDispatchWatch';
+    const DISPATCH_REMINDER_STORE_KEY = 'buildtimeAlarmDispatchReminder';
 
     /* Der Alarmton ist derselbe wie beim FMS-5-Alarm, damit
        keine neue Audiodatei noetig ist. */
@@ -162,6 +164,7 @@
     const TOOLBOX_BUTTON_CLASS = 'afilia-buildtime-alarm-toolbox-button';
     const PANEL_ID = 'afilia-buildtime-alarm-window';
     const TOAST_ID = 'afilia-buildtime-alarm-toast';
+    const RADIUS_POPUP_ID = 'afilia-buildtime-alarm-radius-popup';
     const STATUS_CHIP_ID = 'afilia-buildtime-alarm-status-chip';
     const STYLES_ID = 'afilia-applet-buildtime-alarm-styles';
 
@@ -177,6 +180,12 @@
 
     let defaultLeadMs = DEFAULT_LEAD_MS;
     let audioEnabled = true;
+    let dispatchReminderEnabled = true;
+
+    /* Beobachteter Leitstellen-Ausbau. Wird aus dem sichtbaren
+       Balken gefuellt und laeuft danach lokal weiter, damit der
+       Hinweis auch bei geschlossenem Fenster ausgeloest wird. */
+    let dispatchWatch = null;
 
     let tickTimer = null;
     let lastDomScan = 0;
@@ -915,6 +924,26 @@
             /* Voreinstellung behalten. */
         }
 
+        try {
+            const storedReminder = await api.dbGet(
+                DISPATCH_REMINDER_STORE_KEY
+            );
+
+            if (typeof storedReminder === 'boolean') {
+                dispatchReminderEnabled = storedReminder;
+            }
+        } catch (error) {
+            /* Voreinstellung behalten. */
+        }
+
+        try {
+            dispatchWatch = normalizeDispatchWatch(
+                await api.dbGet(DISPATCH_WATCH_STORE_KEY)
+            );
+        } catch (error) {
+            dispatchWatch = null;
+        }
+
         sortAlarms();
     }
 
@@ -980,6 +1009,30 @@
             await api.dbSet(AUDIO_STORE_KEY, audioEnabled);
         } catch (error) {
             console.warn('[Afilia Toolbox] Ton-Einstellung nicht gespeichert:', error);
+        }
+    }
+
+    async function setDispatchReminderEnabled(enabled) {
+        dispatchReminderEnabled = !!enabled;
+
+        const box = document.querySelector(
+            `#${PANEL_ID} [data-role="radius-reminder"]`
+        );
+
+        if (box) {
+            box.checked = dispatchReminderEnabled;
+        }
+
+        try {
+            await api.dbSet(
+                DISPATCH_REMINDER_STORE_KEY,
+                dispatchReminderEnabled
+            );
+        } catch (error) {
+            console.warn(
+                '[Afilia Toolbox] Hinweis-Einstellung nicht gespeichert:',
+                error
+            );
         }
     }
 
@@ -1343,6 +1396,10 @@
             info.station = stationForBar;
 
             overlays.set(info.overlay, info);
+
+            if (info.kind === 'dispatch') {
+                trackDispatchBuild(info);
+            }
         }
 
         const signature = buildSignature(overlays);
@@ -1451,6 +1508,125 @@
             saveAlarms();
 
             scheduleRepeat();
+        }
+    }
+
+    /* =========================================================
+       Leitstellen-Hinweis (Einsatzradius)
+       =========================================================
+
+       Nach einem Leitstellen-Ausbau soll der Spieler daran
+       erinnert werden, seinen Einsatzradius anzupassen. Dafuer
+       wird der laufende Ausbau einmal beobachtet und die
+       Restzeit lokal weitergezaehlt - so erscheint der Hinweis
+       auch, wenn das Leitstellen-Fenster vorher geschlossen
+       wurde. */
+
+    function normalizeDispatchWatch(value) {
+        if (!value || typeof value !== 'object') {
+            return null;
+        }
+
+        const remainingMs = Number(value.remainingMs);
+        const capturedAt = Number(value.capturedAt);
+
+        if (!Number.isFinite(remainingMs) || !Number.isFinite(capturedAt)) {
+            return null;
+        }
+
+        return {
+            level: String(value.level || 'Ausbau'),
+            remainingMs,
+            capturedAt,
+            notified: value.notified === true
+        };
+    }
+
+    async function saveDispatchWatch() {
+        if (!api) {
+            return;
+        }
+
+        try {
+            await api.dbSet(
+                DISPATCH_WATCH_STORE_KEY,
+                dispatchWatch ? { ...dispatchWatch } : null
+            );
+        } catch (error) {
+            console.warn(
+                '[Afilia Toolbox] Leitstellen-Hinweis konnte nicht gespeichert werden:',
+                error
+            );
+        }
+    }
+
+    /* Jeder Scan des sichtbaren Balkens haelt die beobachtete
+       Restzeit nach. Ein neues Ziel-Level startet eine frische
+       Beobachtung; bereits gemeldete Ausbauten werden nicht
+       erneut gemeldet. */
+
+    function trackDispatchBuild(info) {
+        if (!info || info.kind !== 'dispatch' || !info.extension) {
+            return;
+        }
+
+        const now = Date.now();
+
+        const incomingLevel = info.extension;
+        const incomingIsLevel = /^Level\s+\d+$/i.test(incomingLevel);
+
+        /* Ein echtes, anderes Ziel-Level startet eine neue
+           Beobachtung. Der Fallback "Ausbau" darf eine bereits
+           erkannte Stufe nicht ueberschreiben, falls die
+           Beschreibung kurzzeitig fehlt. */
+        const startsNewBuild = !dispatchWatch || (
+            incomingIsLevel &&
+            dispatchWatch.level !== incomingLevel
+        );
+
+        if (startsNewBuild) {
+            dispatchWatch = {
+                level: incomingLevel,
+                remainingMs: info.remaining,
+                capturedAt: now,
+                notified: false
+            };
+
+            saveDispatchWatch();
+        } else if (dispatchWatch.notified) {
+            /* Derselbe Ausbau wurde bereits gemeldet - nicht
+               erneut ausloesen, falls der Balken kurz stehen
+               bleibt. */
+            return;
+        } else if (dispatchWatch.remainingMs !== info.remaining) {
+            dispatchWatch.remainingMs = info.remaining;
+            dispatchWatch.capturedAt = now;
+
+            saveDispatchWatch();
+        }
+
+        checkDispatchReminder();
+    }
+
+    function checkDispatchReminder() {
+        if (!dispatchWatch || dispatchWatch.notified) {
+            return;
+        }
+
+        if (getRemaining(dispatchWatch) > DONE_THRESHOLD) {
+            return;
+        }
+
+        /* Auch bei abgeschaltetem Hinweis als erledigt markieren,
+           damit er beim spaeteren Einschalten nicht nachtraeglich
+           fuer einen alten Ausbau auftaucht. */
+
+        dispatchWatch.notified = true;
+
+        saveDispatchWatch();
+
+        if (dispatchReminderEnabled) {
+            openRadiusPopup(dispatchWatch.level);
         }
     }
 
@@ -1614,6 +1790,126 @@
         }
     }
 
+    /* =========================================================
+       Hinweis nach dem Leitstellen-Ausbau
+       ========================================================= */
+
+    function closeRadiusPopup() {
+        document.getElementById(RADIUS_POPUP_ID)?.remove();
+
+        if (window._afiliaBtaRadiusKeydown) {
+            window.removeEventListener(
+                'keydown',
+                window._afiliaBtaRadiusKeydown
+            );
+
+            window._afiliaBtaRadiusKeydown = null;
+        }
+    }
+
+    function openRadiusPopup(level) {
+        if (!api || document.getElementById(RADIUS_POPUP_ID)) {
+            return;
+        }
+
+        const levelText = level && level !== 'Ausbau'
+            ? ` auf ${escapeHTML(level)}`
+            : '';
+
+        const overlay = document.createElement('div');
+
+        overlay.id = RADIUS_POPUP_ID;
+
+        overlay.className =
+            'afilia-bta-overlay afilia-bta-radius-overlay';
+
+        overlay.innerHTML = `
+            <div
+                class="afilia-bta-panel afilia-bta-radius-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="afilia-bta-radius-title"
+            >
+                <div class="afilia-bta-radius-icon">
+                    <i class="fa-solid fa-bullseye"></i>
+                </div>
+
+                <div
+                    class="afilia-bta-radius-title"
+                    id="afilia-bta-radius-title"
+                >
+                    Leitstelle ausgebaut
+                </div>
+
+                <div class="afilia-bta-radius-text">
+                    <p>
+                        Die Leitstelle wurde${levelText} ausgebaut.
+                    </p>
+
+                    <p>
+                        Passe jetzt deinen <strong>Einsatzradius</strong> an,
+                        damit deine Einsätze weiterhin für die Rangliste
+                        zählen.
+                    </p>
+                </div>
+
+                <div class="afilia-bta-radius-actions">
+                    <button
+                        type="button"
+                        class="afilia-bta-radius-disable"
+                        data-role="disable"
+                    >Nicht mehr erinnern</button>
+
+                    <button
+                        type="button"
+                        class="afilia-bta-radius-close"
+                        data-role="close"
+                    >Verstanden</button>
+                </div>
+            </div>
+        `;
+
+        overlay.querySelector('[data-role="close"]').addEventListener(
+            'click',
+            event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                closeRadiusPopup();
+            }
+        );
+
+        overlay.querySelector('[data-role="disable"]').addEventListener(
+            'click',
+            event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                setDispatchReminderEnabled(false);
+
+                closeRadiusPopup();
+            }
+        );
+
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) {
+                closeRadiusPopup();
+            }
+        });
+
+        window._afiliaBtaRadiusKeydown = event => {
+            if (event.key === 'Escape') {
+                closeRadiusPopup();
+            }
+        };
+
+        window.addEventListener('keydown', window._afiliaBtaRadiusKeydown);
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('[data-role="close"]').focus();
+    }
+
     function openWindow() {
         if (document.getElementById(PANEL_ID)) {
             renderWindow();
@@ -1668,6 +1964,12 @@
                         <input type="checkbox" data-role="audio">
 
                         <span>Alarmton</span>
+                    </label>
+
+                    <label class="afilia-bta-field afilia-bta-field-check">
+                        <input type="checkbox" data-role="radius-reminder">
+
+                        <span>Einsatzradius-Hinweis</span>
                     </label>
 
                     <button
@@ -1798,6 +2100,18 @@
         audioBox.addEventListener('change', () => {
             setAudioEnabled(audioBox.checked);
         });
+
+        const radiusBox = overlay.querySelector(
+            '[data-role="radius-reminder"]'
+        );
+
+        if (radiusBox) {
+            radiusBox.checked = dispatchReminderEnabled;
+
+            radiusBox.addEventListener('change', () => {
+                setDispatchReminderEnabled(radiusBox.checked);
+            });
+        }
 
         overlay.querySelector('[data-role="clear"]').addEventListener(
             'click',
@@ -2123,6 +2437,7 @@
 
         tickTimer = setInterval(() => {
             syncAlarms();
+            checkDispatchReminder();
             tickWindow();
             updateButtons();
         }, TICK_INTERVAL);
@@ -2465,6 +2780,91 @@
                 color: #6b7280;
             }
 
+            .afilia-bta-radius-overlay {
+                z-index: 100000;
+            }
+
+            .afilia-bta-radius-panel {
+                width: min(420px, 100%);
+                max-height: none;
+                padding: 24px 24px 20px;
+                text-align: center;
+            }
+
+            .afilia-bta-radius-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 48px;
+                height: 48px;
+                margin: 0 auto 12px;
+                border-radius: 50%;
+                background: #fef3c7;
+                color: #d97706;
+                font-size: 22px;
+            }
+
+            .afilia-bta-radius-title {
+                font-size: 18px;
+                font-weight: 800;
+                color: #111827;
+            }
+
+            .afilia-bta-radius-text {
+                margin-top: 8px;
+                font-size: 13px;
+                line-height: 1.55;
+                color: #4b5563;
+            }
+
+            .afilia-bta-radius-text p {
+                margin: 0 0 6px;
+            }
+
+            .afilia-bta-radius-text p:last-child {
+                margin-bottom: 0;
+            }
+
+            .afilia-bta-radius-actions {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin-top: 18px;
+            }
+
+            .afilia-bta-radius-close,
+            .afilia-bta-radius-disable {
+                padding: 8px 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .afilia-bta-radius-close {
+                border: 1px solid #d97706;
+                background: #d97706;
+                color: #ffffff;
+            }
+
+            .afilia-bta-radius-close:hover {
+                border-color: #b45309;
+                background: #b45309;
+            }
+
+            .afilia-bta-radius-disable {
+                border: 1px solid #e5e7eb;
+                background: #ffffff;
+                color: #6b7280;
+            }
+
+            .afilia-bta-radius-disable:hover {
+                border-color: #d1d5db;
+                color: #374151;
+            }
+
             .afilia-bta-toast {
                 position: fixed;
                 top: 16px;
@@ -2563,7 +2963,17 @@
 
         document.getElementById(PANEL_ID)?.remove();
         document.getElementById(TOAST_ID)?.remove();
+        document.getElementById(RADIUS_POPUP_ID)?.remove();
         document.getElementById(STYLES_ID)?.remove();
+
+        if (window._afiliaBtaRadiusKeydown) {
+            window.removeEventListener(
+                'keydown',
+                window._afiliaBtaRadiusKeydown
+            );
+
+            window._afiliaBtaRadiusKeydown = null;
+        }
 
         if (toastTimer) {
             clearTimeout(toastTimer);
@@ -2575,6 +2985,8 @@
         barButtons = new Map();
         isBlocked = false;
         audioEnabled = true;
+        dispatchReminderEnabled = true;
+        dispatchWatch = null;
         defaultLeadMs = DEFAULT_LEAD_MS;
         lastButtonSlot = null;
         lastDomScan = 0;
@@ -2635,8 +3047,8 @@
         id: 'buildtimeAlarm',
         name: 'Bauzeit-Alarm',
         description:
-            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit.',
-        version: '1.2.0',
+            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit. Nach dem Leitstellen-Ausbau erinnert ein Hinweis an den Einsatzradius.',
+        version: '1.2.1',
         beta: false,
         defaultEnabled: false,
         init,
