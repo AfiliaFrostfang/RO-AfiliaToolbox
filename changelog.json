@@ -112,6 +112,10 @@
             ]
         },
         "buildtimeAlarm": {
+            "1.2.0": [
+                "Neu: Der Bauzeit-Alarm unterstützt jetzt auch den Ausbau der Leitstelle (Dispatch Area). Neben dem Countdown im Leitstellen-Fenster erscheint dieselbe Alarm-Schaltfläche.",
+                "Die Leitstelle wird in der Alarmübersicht und der Statusleiste mit dem Ziel-Level angezeigt. Die Restzeit wird wie bei Wachenerweiterungen lokal weitergezählt."
+            ],
             "1.1.0":[
                 "Beta to Stable: Bauzeit-Alarm wurde nun zu Stable bewegt.",
                 "Die frühste Fertigstellung einer Erweiterung wird nun mitsamt Wache in der Status Leiste angezeigt.",

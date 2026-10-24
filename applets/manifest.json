@@ -17,7 +17,7 @@
     },
     "buildtimeAlarm": {
         "file": "applets/buildtimeAlarm.js",
-        "version": "1.1.0"
+        "version": "1.2.0"
     },
     "alarmHotkey": {
         "file": "applets/alarmHotkey.js",

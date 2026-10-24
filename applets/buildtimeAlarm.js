@@ -39,6 +39,17 @@
    ring-orange-500) nennt die Erweiterung in einem h3.
    Der Wachenname und eine stabile Support-ID stehen im
    Sheet-Kopf (h2[data-slot="sheet-title"]).
+
+   ----------------------------------------------
+   Leitstellen-Ausbau (Dispatch Area)
+   ----------------------------------------------
+   Der Ausbau der Leitstelle hat einen eigenen Balken im
+   Leitstellen-Fenster. Er ist an dem Text "Leitstelle wird
+   ausgebaut" zu erkennen. Prozentwert und Restzeit stehen in
+   derselben Zeile, das Ziel-Level im Beschreibungstext
+   ("Die Leitstelle wird auf Level 2 ausgebaut."). Die
+   Leitstelle haengt an keiner Wache und wird deshalb unter
+   dem festen Namen "Leitstelle" gefuehrt.
    ========================================================= */
 
 (function () {
@@ -111,8 +122,13 @@
         stationName: 'span.cursor-pointer',
         supportId: 'button[aria-label^="Support-ID "]',
 
-        /* Der Text, an dem der Baubalken zu erkennen ist. */
+        /* Der Text, an dem der Baubalken einer Wachen-
+           erweiterung zu erkennen ist. */
         buildtimeLabel: 'Erweiterung wird gebaut',
+
+        /* Der Text, an dem der Ausbau der Leitstelle (Dispatch
+           Area) zu erkennen ist. */
+        dispatchLabel: 'Leitstelle wird ausgebaut',
 
         /* Das Overlay, das direkt ueber der Erweiterungs-Karte
            liegt. Die Karte selbst ist sein Elternelement. */
@@ -122,11 +138,25 @@
         extensionTitle: 'h3'
     };
 
+    /* Die Leitstelle ist global - sie haengt an keiner Wache.
+       Der Name dient nur der Anzeige und dem Schluessel. */
+
+    const DISPATCH_STATION_NAME = 'Leitstelle';
+
+    /* Zuordnung von Ankertext zu Bauart. Der Text ist stabil,
+       die umgebenden Klassen sind es nicht. */
+
+    const BUILD_KINDS = [
+        { kind: 'extension', label: SELECTORS.buildtimeLabel },
+        { kind: 'dispatch', label: SELECTORS.dispatchLabel }
+    ];
+
     const CLASSES = {
         button: 'afilia-buildtime-alarm-button',
         label: 'afilia-buildtime-alarm-label',
         active: 'afilia-buildtime-alarm-button-active',
-        done: 'afilia-buildtime-alarm-button-done'
+        done: 'afilia-buildtime-alarm-button-done',
+        dispatch: 'afilia-buildtime-alarm-button-dispatch'
     };
 
     const TOOLBOX_BUTTON_CLASS = 'afilia-buildtime-alarm-toolbox-button';
@@ -323,17 +353,11 @@
         return candidates.sort((a, b) => b.length - a.length)[0] || '';
     }
 
-    /* Findet das Sheet mit der Wachenanzeige. Der Bauzeit-
-       Anker ist das eigentliche Kriterium: ohne ihn gibt es
-       nichts zu ueberwachen, auch wenn das Sheet offen ist. */
+    /* Findet das Sheet mit der Wachenanzeige. Der Wachenname
+       ist das eigentliche Kriterium; die Leitstelle wird
+       getrennt behandelt, weil sie an keiner Wache haengt. */
 
     function findStationContext() {
-        const anchors = findBuildtimeAnchors();
-
-        if (anchors.length === 0) {
-            return null;
-        }
-
         for (const dialog of document.querySelectorAll(SELECTORS.sheet)) {
             const name = readStationName(dialog);
 
@@ -347,10 +371,12 @@
         return null;
     }
 
-    /* Alle Elemente, deren Text der Bauanzeige entspricht. Der
-       Text ist stabil, die Klassen darum sind es nicht. */
+    /* Alle Elemente, deren Text einer Bauanzeige entspricht.
+       Der Text ist stabil, die Klassen darum sind es nicht.
+       Der Titel des Leitstellen-Sheets lautet genauso wie der
+       Anker im Baubalken und wird deshalb ausgeschlossen. */
 
-    function findBuildtimeAnchors() {
+    function findBuildAnchors() {
         const found = [];
 
         const walker = document.createTreeWalker(
@@ -363,11 +389,17 @@
         while (node) {
             const value = (node.nodeValue || '').trim();
 
-            if (value === SELECTORS.buildtimeLabel) {
+            const entry = BUILD_KINDS.find(item => item.label === value);
+
+            if (entry) {
                 const parent = node.parentElement;
 
-                if (parent && isElementVisible(parent)) {
-                    found.push(parent);
+                if (
+                    parent &&
+                    isElementVisible(parent) &&
+                    !parent.closest(SELECTORS.sheetTitle)
+                ) {
+                    found.push({ element: parent, kind: entry.kind });
                 }
             }
 
@@ -380,7 +412,11 @@
     /* Aus dem Anker wird das Overlay, aus dem Overlay die
        Restzeit und aus der Karte der Erweiterungsname. */
 
-    function readOverlay(anchor) {
+    function readOverlay(anchor, kind) {
+        if (kind === 'dispatch') {
+            return readDispatchOverlay(anchor);
+        }
+
         const overlay = anchor.closest(SELECTORS.overlay);
 
         if (!overlay || !isElementVisible(overlay)) {
@@ -399,7 +435,66 @@
             ? readText(card.querySelector(SELECTORS.extensionTitle))
             : '';
 
-        return { overlay, card, remaining, extension };
+        return { overlay, card, remaining, extension, kind };
+    }
+
+    /* Die Leitstelle hat keinen eigenen Kartenrahmen. Der
+       naechste Vorfahr mit einer Restzeit ist die Zeile, in der
+       auch Prozentwert und Countdown stehen. Die Suche endet
+       spaetestens am Sheet, damit nicht versehentlich der
+       komplette Dialog als Balken gilt. */
+
+    function findClockContainer(anchor) {
+        let node = anchor.parentElement;
+
+        while (node && node !== document.body) {
+            if (node.matches && node.matches(SELECTORS.sheet)) {
+                return null;
+            }
+
+            if (readOverlayRemaining(node)) {
+                return node;
+            }
+
+            node = node.parentElement;
+        }
+
+        return null;
+    }
+
+    function readDispatchOverlay(anchor) {
+        const overlay = findClockContainer(anchor);
+
+        if (!overlay || !isElementVisible(overlay)) {
+            return null;
+        }
+
+        const remaining = parseRemaining(readOverlayRemaining(overlay));
+
+        if (remaining === null) {
+            return null;
+        }
+
+        return {
+            overlay,
+            card: null,
+            remaining,
+            extension: readDispatchExtension(anchor),
+            kind: 'dispatch'
+        };
+    }
+
+    /* Der Ausbau nennt das Ziellevel im Beschreibungstext
+       ("Die Leitstelle wird auf Level 2 ausgebaut."). Damit
+       lassen sich mehrere Ausbaustufen auseinanderhalten. */
+
+    function readDispatchExtension(anchor) {
+        const dialog = anchor.closest(SELECTORS.sheet) || document;
+
+        const match = readText(dialog)
+            .match(/Leitstelle wird auf Level\s+(\d+)/i);
+
+        return match ? `Level ${match[1]}` : 'Ausbau';
     }
 
     /* Sucht die Box mit der Restzeit. Sie ist der einzige
@@ -904,7 +999,7 @@
         }
     }
 
-    function createBarButton() {
+    function createBarButton(kind) {
         const button = document.createElement('button');
 
         button.type = 'button';
@@ -913,6 +1008,10 @@
             `${CLASSES.button} flex items-center gap-1 ` +
             'px-2 h-6 rounded-full border text-[11px] font-bold ' +
             'whitespace-nowrap cursor-pointer transition-colors';
+
+        if (kind === 'dispatch') {
+            button.classList.add(CLASSES.dispatch);
+        }
 
         button.innerHTML =
             '<i class="fa-solid fa-bell text-[11px]"></i>' +
@@ -1207,37 +1306,46 @@
 
         lastDomScan = now;
 
-        const station = findStationContext();
-
-        if (!station) {
-            /* Ohne Wachennamen laesst sich der Balken nicht
-               zuordnen. Lieber keine Schaltflaeche anbieten als
-               eine, die ins Leere zeigt. */
-
-            if (barButtons.size > 0) {
-                for (const button of barButtons.values()) {
-                    button.remove();
-                }
-
-                barButtons = new Map();
-
-                lastDomSignature = '';
-            }
-
-            return;
-        }
-
         const overlays = new Map();
 
-        for (const anchor of findBuildtimeAnchors()) {
-            const info = readOverlay(anchor);
+        let station = null;
 
-            if (info) {
-                overlays.set(info.overlay, info);
+        for (const anchor of findBuildAnchors()) {
+            const info = readOverlay(anchor.element, anchor.kind);
+
+            if (!info) {
+                continue;
             }
+
+            /* Die Leitstelle ist global und braucht keinen
+               Wachennamen. Fuer Erweiterungen wird das offene
+               Wachen-Sheet gelesen. */
+
+            let stationForBar = null;
+
+            if (info.kind === 'dispatch') {
+                stationForBar = {
+                    name: DISPATCH_STATION_NAME,
+                    supportId: ''
+                };
+            } else {
+                if (station === null) {
+                    station = findStationContext();
+                }
+
+                stationForBar = station;
+            }
+
+            if (!stationForBar) {
+                continue;
+            }
+
+            info.station = stationForBar;
+
+            overlays.set(info.overlay, info);
         }
 
-        const signature = buildSignature(station, overlays);
+        const signature = buildSignature(overlays);
 
         if (signature === lastDomSignature) {
             return;
@@ -1245,22 +1353,33 @@
 
         lastDomSignature = signature;
 
+        /* Ohne zuordenbaren Balken keine Schaltflaeche
+           anbieten - sie wuerde ins Leere zeigen. */
+
+        if (overlays.size === 0) {
+            for (const button of barButtons.values()) {
+                button.remove();
+            }
+
+            barButtons = new Map();
+
+            return;
+        }
+
         for (const [overlay, info] of overlays) {
             let button = barButtons.get(overlay);
 
             if (!button || !button.isConnected) {
-                button = createBarButton();
+                button = createBarButton(info.kind);
 
                 barButtons.set(overlay, button);
             }
 
-            const key = station
-                ? toAlarmKey(station, info.extension)
-                : '';
+            const key = toAlarmKey(info.station, info.extension);
 
             button.dataset.alarmKey = key;
-            button.dataset.stationName = station ? station.name : '';
-            button.dataset.supportId = station ? station.supportId : '';
+            button.dataset.stationName = info.station.name;
+            button.dataset.supportId = info.station.supportId;
             button.dataset.extensionName = info.extension;
             button.dataset.remaining = String(info.remaining);
 
@@ -1291,9 +1410,7 @@
             }
         }
 
-        if (station) {
-            refreshStoredAlarms(station, overlays);
-        }
+        refreshStoredAlarms(overlays);
     }
 
     /* Haelt die gespeicherte Restzeit nach, solange der Balken
@@ -1301,15 +1418,17 @@
        ausgeloesten Alarm zurueck, falls die Bauzeit wieder
        deutlich ueber dem Alarmfenster liegt. */
 
-    function refreshStoredAlarms(station, overlays) {
+    function refreshStoredAlarms(overlays) {
         let changed = false;
 
         for (const info of overlays.values()) {
-            if (!info.extension) {
+            if (!info.extension || !info.station) {
                 continue;
             }
 
-            const alarm = findAlarm(toAlarmKey(station, info.extension));
+            const alarm = findAlarm(
+                toAlarmKey(info.station, info.extension)
+            );
 
             if (!alarm) {
                 continue;
@@ -1339,12 +1458,15 @@
        Der MutationObserver des Kerns lauscht auf class/style/
        data-state und wuerde sonst jeden Scan erneut ausloesen. */
 
-    function buildSignature(station, overlays) {
-        const parts = [`${station.supportId}|${station.name}`];
+    function buildSignature(overlays) {
+        const parts = [];
 
         for (const [overlay, info] of overlays) {
+            const station = info.station;
+
             parts.push(
-                `${toStationKey(info.extension)}=${info.remaining}@${overlay.isConnected}`
+                `${station.supportId}|${station.name}|${toStationKey(info.extension)}` +
+                `=${info.remaining}@${overlay.isConnected}`
             );
         }
 
@@ -1412,7 +1534,7 @@
             );
         }
 
-        const label = count === 1 ? 'Erweiterung' : 'Erweiterungen';
+        const label = count === 1 ? 'Bauzeit' : 'Bauzeiten';
 
         setAttributeIfChanged(
             button,
@@ -1729,7 +1851,7 @@
         } else {
             setTextIfChanged(
                 subtitle,
-                'Alarm X vor Fertigstellung der Erweiterung.'
+                'Alarm X vor Fertigstellung der Erweiterung oder der Leitstelle.'
             );
         }
 
@@ -1743,7 +1865,9 @@
                     <p class="afilia-bta-empty-hint">
                         Öffne im Spiel eine Wache, wechsle auf
                         „Erweiterungen" und klicke neben einer laufenden
-                        Erweiterung auf „Alarm".
+                        Erweiterung auf „Alarm". Bei einem laufenden
+                        Ausbau der Leitstelle steht dieselbe Schaltfläche
+                        direkt neben dem Countdown.
                     </p>
                 </div>
             `;
@@ -2058,6 +2182,22 @@
             .${CLASSES.button}:hover {
                 border-color: #ea580c;
                 background: #ffffff;
+            }
+
+            .${CLASSES.button}.${CLASSES.dispatch} {
+                border-color: rgba(220, 38, 38, 0.45);
+                color: #b91c1c;
+            }
+
+            .${CLASSES.button}.${CLASSES.dispatch}:hover {
+                border-color: #dc2626;
+                background: #ffffff;
+            }
+
+            .${CLASSES.button}.${CLASSES.dispatch}.${CLASSES.active} {
+                border-color: #dc2626;
+                background: #dc2626;
+                color: #ffffff;
             }
 
             .${CLASSES.button}.${CLASSES.active} {
@@ -2443,19 +2583,25 @@
     }
 
     /* Diagnosehilfe fuer die Beta-Phase. In der Konsole
-       aufrufbar, solange eine Erweiterung gebaut wird. */
+       aufrufbar, solange eine Erweiterung oder die Leitstelle
+       ausgebaut wird. */
 
     function probe() {
-        const station = findStationContext();
+        const extensionStation = findStationContext();
 
-        const rows = findBuildtimeAnchors().map(anchor => {
-            const info = readOverlay(anchor);
+        const rows = findBuildAnchors().map(({ element, kind }) => {
+            const info = readOverlay(element, kind);
 
             if (!info) {
-                return { error: 'Overlay oder Restzeit nicht lesbar' };
+                return { kind, error: 'Overlay oder Restzeit nicht lesbar' };
             }
 
+            const station = info.kind === 'dispatch'
+                ? { name: DISPATCH_STATION_NAME, supportId: '' }
+                : extensionStation;
+
             return {
+                kind,
                 station: station ? station.name : '(kein Sheet gefunden)',
                 supportId: station ? station.supportId : '',
                 extension: info.extension,
@@ -2471,8 +2617,9 @@
 
         if (rows.length === 0) {
             console.warn(
-                '[Afilia Toolbox] Kein Baubalken gefunden. Erwartet wird der Text "%s" im geoeffneten Wachenfenster, Tab „Erweiterungen".',
-                SELECTORS.buildtimeLabel
+                '[Afilia Toolbox] Kein Baubalken gefunden. Erwartet wird der Text "%s" im geoeffneten Wachenfenster (Tab „Erweiterungen") oder "%s" im Leitstellen-Fenster.',
+                SELECTORS.buildtimeLabel,
+                SELECTORS.dispatchLabel
             );
         }
 
@@ -2488,8 +2635,8 @@
         id: 'buildtimeAlarm',
         name: 'Bauzeit-Alarm',
         description:
-            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit.',
-        version: '1.1.0',
+            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit.',
+        version: '1.2.0',
         beta: false,
         defaultEnabled: false,
         init,

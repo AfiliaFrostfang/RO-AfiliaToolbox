@@ -87,7 +87,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 | `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
-| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm" (Beta): Alarm für die Restzeit einer Wachenerweiterung mit Übersichtsfenster. Liest nur das Spielbild. |
+| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm": Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus mit Übersichtsfenster. Liest nur das Spielbild. |
 | `applets/alarmHotkey.js` | Applet „Schnellalarm": Alarmiert die ausgewählten Fahrzeuge per frei wählbarer Taste (standardmäßig STRG). |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |
 | `version.json` | Nur die aktuelle Kernversion, wird für den Update-Check verwendet. |
