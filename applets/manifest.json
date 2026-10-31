@@ -19,6 +19,10 @@
         "file": "applets/buildtimeAlarm.js",
         "version": "1.2.1"
     },
+    "dispatchVehicleSort": {
+        "file": "applets/dispatchVehicleSort.js",
+        "version": "1.0.0"
+    },
     "alarmHotkey": {
         "file": "applets/alarmHotkey.js",
         "version": "1.0.0"

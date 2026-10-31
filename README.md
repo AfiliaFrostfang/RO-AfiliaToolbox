@@ -49,6 +49,10 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 - Es werden **keine Daten über die API abgerufen** – alles wird ausschließlich aus dem Spielbild gelesen.
 - Einschränkung: Ein Alarm kann nur gesetzt werden, während das Wachen- bzw. Leitstellenfenster mit dem laufenden Ausbau offen ist. Das Fenster zeigt daher nur Alarme, die bereits gesetzt wurden – nicht alle Wachen im Spiel.
 
+### Einsatzliste nach Name sortieren
+- Sortiert Fahrzeuge im Fenster „Fahrzeuge alarmieren“ innerhalb jeder Wache alphabetisch nach Namen.
+- Wirkt auch im **Entfernungsmodus**, in dem das Spiel die Fahrzeuge sonst nach Entfernung sortiert. Die Wachen-Gruppierung des Spiels bleibt dabei erhalten.
+
 ### Schnellalarm
 - Alarmiert die ausgewählten Fahrzeuge per Tastendruck, ohne den **Alarmieren**-Knopf im Fenster „Fahrzeuge alarmieren“ anzuklicken.
 - Standard ist **STRG**: gedrückt halten und wieder loslassen – solange dabei keine andere Taste gedrückt wird (STRG+C, STRG+V usw. lösen also nichts aus).
@@ -90,6 +94,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 | `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
 | `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm": Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus mit Übersichtsfenster sowie Einsatzradius-Hinweis nach einem Leitstellen-Ausbau. Liest nur das Spielbild. |
+| `applets/dispatchVehicleSort.js` | Applet „Einsatzliste nach Name sortieren": Sortiert die Fahrzeugliste im Alarmierungsfenster innerhalb jeder Wache alphabetisch nach Namen. |
 | `applets/alarmHotkey.js` | Applet „Schnellalarm": Alarmiert die ausgewählten Fahrzeuge per frei wählbarer Taste (standardmäßig STRG). |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |
 | `version.json` | Nur die aktuelle Kernversion, wird für den Update-Check verwendet. |

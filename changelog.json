@@ -1,7 +1,10 @@
 {
     "toolbox": {
+        "1.14.3":[
+            "Einpflegung neues Applet im Store."
+        ],
         "1.14.2":[
-            "Beschreibungsanpassung",
+            "Beschreibungsanpassung"
         ],
         "1.14.1":[
             "Kontaktdatenänderung."
@@ -88,6 +91,12 @@
             ],
             "1.0.0": [
                 "Erste Version: Sortiert AAOs in eigene Kategorien und ersetzt die AAO-Auswahl im Alarmierungsfenster durch eine kategorisierte Ansicht."
+            ]
+        },
+        "dispatchVehicleSort": {
+            "1.0.0": [
+                "Erste Version: Sortiert die Fahrzeugliste im Fenster „Fahrzeuge alarmieren“ innerhalb jeder Wache alphabetisch nach Namen.",
+                "Nutzt jetzt die echten Fahrzeugzeilen des Spiels. Dadurch funktioniert die Sortierung auch im Entfernungsmodus; Wachen-Gruppen und Kopfzeilen bleiben erhalten."
             ]
         },
         "notepad": {
