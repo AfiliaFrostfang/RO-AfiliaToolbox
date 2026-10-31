@@ -459,7 +459,7 @@
 
     window.__AFILIA_APPLET_QUEUE__.push({
         id: 'dispatchVehicleSort',
-        name: 'Einsatzliste nach Name sortieren',
+        name: 'Einsatzfahrzeuge nach Name sortieren',
         description:
             'Sortiert Fahrzeuge im Fenster „Fahrzeuge alarmieren“ innerhalb jeder Wache alphabetisch nach Namen – auch im Entfernungsmodus, in dem das Spiel sonst nach Entfernung sortiert.',
         version: '1.0.0',
