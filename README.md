@@ -41,8 +41,9 @@ Es erweitert das Spiel ausschließlich um nützliche Komfortfunktionen und verwe
 
 ### Bauzeit-Alarm
 - In der Erweiterungsübersicht einer Wache erscheint neben dem laufenden Countdown eine **Alarm**-Schaltfläche. Ein Klick setzt den Alarm, ein zweiter entfernt ihn wieder.
-- Das gilt ebenso für einen laufenden Ausbau der **Leitstelle**: Dort sitzt dieselbe Schaltfläche neben dem Countdown, inklusive Ziel-Level.
-- Das Fenster (Hammer-Icon in der Toolbox) listet alle gesetzten Alarme mit **Wachenname**, Erweiterung und verbleibender Bauzeit auf, sortiert nach Dringlichkeit.
+- Ebenso lässt sich der **Level-Aufstieg einer Wache** („Wache wird ausgebaut“) überwachen: Die Alarm-Schaltfläche sitzt dort direkt neben dem Countdown im Wachenfenster.
+- Das gilt auch für einen laufenden Ausbau der **Leitstelle**: Dort sitzt dieselbe Schaltfläche neben dem Countdown, inklusive Ziel-Level.
+- Das Fenster (Hammer-Icon in der Toolbox) listet alle gesetzten Alarme mit **Wachenname**, Erweiterung bzw. Wachenausbau und verbleibender Bauzeit auf, sortiert nach Dringlichkeit.
 - Die Vorwarnzeit ist wählbar (1/5/10/15/30 Minuten, 1 Stunde). Reicht die Restzeit nicht mehr dafür, feuert der Alarm sofort.
 - Der Countdown wird aus dem Spielbild gelesen und danach lokal weitergezählt. Der Alarm läuft also weiter, wenn das Wachenfenster inzwischen geschlossen ist.
 - Nach einem abgeschlossenen Leitstellen-Ausbau erscheint ein Hinweis, den **Einsatzradius** anzupassen, damit Einsätze weiterhin für die Rangliste zählen. Der Hinweis lässt sich im Alarmfenster über „Einsatzradius-Hinweis“ abschalten.
@@ -93,7 +94,7 @@ Das Skript besteht aus einem Kern und mehreren Applets (vergleichbar mit [LSSM](
 | `applets/aaoCategories.js` | Applet „AAO-Kategorien": AAO-Verwaltung in den Einstellungen und kategorisierte Alarmierung. |
 | `applets/notepad.js` | Applet „Notizblock": Notizblock in der rechten Schnellzugriffsleiste. |
 | `applets/fmsAlert.js` | Applet „FMS-5-Alarm": Roter Statusbalken und optionaler Alarmton bei einem Sprechwunsch. |
-| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm": Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus mit Übersichtsfenster sowie Einsatzradius-Hinweis nach einem Leitstellen-Ausbau. Liest nur das Spielbild. |
+| `applets/buildtimeAlarm.js` | Applet „Bauzeit-Alarm": Alarm für die Restzeit einer Wachenerweiterung, eines Wachenausbaus (Level-Up) oder des Leitstellen-Ausbaus mit Übersichtsfenster sowie Einsatzradius-Hinweis nach einem Leitstellen-Ausbau. Liest nur das Spielbild. |
 | `applets/dispatchVehicleSort.js` | Applet „Einsatzliste nach Name sortieren": Sortiert die Fahrzeugliste im Alarmierungsfenster innerhalb jeder Wache alphabetisch nach Namen. |
 | `applets/alarmHotkey.js` | Applet „Schnellalarm": Alarmiert die ausgewählten Fahrzeuge per frei wählbarer Taste (standardmäßig STRG). |
 | `changelog.json` | Versionshinweise der Toolbox und der Applets. Wird vom Kern geladen und im Update-Popup angezeigt. |

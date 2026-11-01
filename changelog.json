@@ -124,6 +124,11 @@
             ]
         },
         "buildtimeAlarm": {
+            "1.3.0": [
+                "Neu: Der Bauzeit-Alarm überwacht jetzt auch den Level-Aufstieg einer Wache („Wache wird ausgebaut“). Neben dem Countdown im Wachenfenster erscheint dieselbe Alarm-Schaltfläche.",
+                "Die Alarmübersicht zeigt den Ausbau mit dem Ziel-Level (z. B. „Level 2“). Die Restzeit wird wie bei Erweiterungen und der Leitstelle lokal weitergezählt.",
+                "Die Beschreibungen im Applet Store und in der Übersicht berücksichtigen jetzt den Wachenausbau."
+            ],
             "1.2.1": [
                 "Neu: Nach einem abgeschlossenen Leitstellen-Ausbau erscheint ein Hinweis, den Einsatzradius anzupassen, damit Einsätze weiterhin für die Rangliste zählen.",
                 "Der Hinweis wird aus dem beobachteten Ausbau lokal weitergezählt und erscheint deshalb auch, wenn das Leitstellen-Fenster vorher geschlossen wurde.",

@@ -41,6 +41,17 @@
    Sheet-Kopf (h2[data-slot="sheet-title"]).
 
    ----------------------------------------------
+   Wachenausbau (Level-Up)
+   ----------------------------------------------
+   Der Level-Aufstieg einer Wache hat einen eigenen
+   Fortschrittsbalken mit dem Text "Wache wird ausgebaut".
+   Er liegt als eigene Karte im Wachenfenster (Tab "Wache"),
+   nicht in einem Overlay. Prozentwert und Restzeit stehen
+   rechts in derselben Zeile. Das aktuelle Level steht in der
+   Level-Karte; ohne explizites Ziel-Level wird daraus die
+   naechste Stufe abgeleitet.
+
+   ----------------------------------------------
    Leitstellen-Ausbau (Dispatch Area)
    ----------------------------------------------
    Der Ausbau der Leitstelle hat einen eigenen Balken im
@@ -128,6 +139,10 @@
            erweiterung zu erkennen ist. */
         buildtimeLabel: 'Erweiterung wird gebaut',
 
+        /* Der Text, an dem der Level-Aufstieg einer Wache zu
+           erkennen ist. */
+        stationLabel: 'Wache wird ausgebaut',
+
         /* Der Text, an dem der Ausbau der Leitstelle (Dispatch
            Area) zu erkennen ist. */
         dispatchLabel: 'Leitstelle wird ausgebaut',
@@ -150,6 +165,7 @@
 
     const BUILD_KINDS = [
         { kind: 'extension', label: SELECTORS.buildtimeLabel },
+        { kind: 'station', label: SELECTORS.stationLabel },
         { kind: 'dispatch', label: SELECTORS.dispatchLabel }
     ];
 
@@ -158,7 +174,8 @@
         label: 'afilia-buildtime-alarm-label',
         active: 'afilia-buildtime-alarm-button-active',
         done: 'afilia-buildtime-alarm-button-done',
-        dispatch: 'afilia-buildtime-alarm-button-dispatch'
+        dispatch: 'afilia-buildtime-alarm-button-dispatch',
+        station: 'afilia-buildtime-alarm-button-station'
     };
 
     const TOOLBOX_BUTTON_CLASS = 'afilia-buildtime-alarm-toolbox-button';
@@ -426,6 +443,10 @@
             return readDispatchOverlay(anchor);
         }
 
+        if (kind === 'station') {
+            return readStationOverlay(anchor);
+        }
+
         const overlay = anchor.closest(SELECTORS.overlay);
 
         if (!overlay || !isElementVisible(overlay)) {
@@ -504,6 +525,105 @@
             .match(/Leitstelle wird auf Level\s+(\d+)/i);
 
         return match ? `Level ${match[1]}` : 'Ausbau';
+    }
+
+    /* Der Level-Aufstieg einer Wache sitzt nicht in einem
+       Overlay, sondern als eigene Karte im Wachenfenster. Die
+       Restzeit steht in derselben Zeile wie der Prozentwert,
+       der Name der Wache kommt aus dem Sheet-Kopf. */
+
+    function readStationOverlay(anchor) {
+        const dialog = anchor.closest(SELECTORS.sheet);
+
+        if (!dialog) {
+            return null;
+        }
+
+        const overlay = findClockContainer(anchor);
+
+        if (!overlay || !isElementVisible(overlay)) {
+            return null;
+        }
+
+        const remaining = parseRemaining(readOverlayRemaining(overlay));
+
+        if (remaining === null) {
+            return null;
+        }
+
+        const name = readStationName(dialog);
+
+        if (!name) {
+            return null;
+        }
+
+        return {
+            overlay,
+            card: null,
+            remaining,
+            extension: readStationLevelUp(dialog, overlay),
+            kind: 'station',
+            station: {
+                name,
+                supportId: readSupportId(dialog)
+            }
+        };
+    }
+
+    /* Das Ziel-Level steht nicht immer im Text. Wenn es fehlt,
+       wird das aktuell angezeigte Level gelesen und der Ausbau
+       auf die naechste Stufe bezogen. So bleiben mehrere
+       Level-Aufstiege derselben Wache getrennt. */
+
+    function readStationLevelUp(dialog, overlay) {
+        /* Nur die Ausbaukarte lesen, damit ein Text aus einem
+           versteckten Tab nicht das Ziel-Level verfaelscht. */
+
+        const card = overlay && overlay.parentElement
+            ? overlay.parentElement
+            : dialog;
+
+        const explicit = readText(card).match(
+            /(?:auf|zu)\s+Level\s+(\d{1,3})/i
+        );
+
+        if (explicit) {
+            return `Level ${explicit[1]}`;
+        }
+
+        const current = readCurrentStationLevel(dialog);
+
+        if (current !== null) {
+            return `Level ${current + 1}`;
+        }
+
+        return 'Wachenausbau';
+    }
+
+    function readCurrentStationLevel(dialog) {
+        if (!dialog) {
+            return null;
+        }
+
+        const title = dialog.querySelector(SELECTORS.sheetTitle);
+
+        for (const node of dialog.querySelectorAll('div, span')) {
+            if (title && title.contains(node)) {
+                continue;
+            }
+
+            const match = readText(node).match(
+                /^Level\s*(\d{1,3})$/i
+            );
+
+            if (!match || !isElementVisible(node)) {
+                continue;
+            }
+
+            return Number(match[1]);
+        }
+
+        return null;
     }
 
     /* Sucht die Box mit der Restzeit. Sie ist der einzige
@@ -1066,6 +1186,10 @@
             button.classList.add(CLASSES.dispatch);
         }
 
+        if (kind === 'station') {
+            button.classList.add(CLASSES.station);
+        }
+
         button.innerHTML =
             '<i class="fa-solid fa-bell text-[11px]"></i>' +
             `<span class="${CLASSES.label}"></span>`;
@@ -1371,8 +1495,9 @@
             }
 
             /* Die Leitstelle ist global und braucht keinen
-               Wachennamen. Fuer Erweiterungen wird das offene
-               Wachen-Sheet gelesen. */
+               Wachennamen. Beim Level-Aufstieg steht die Wache
+               direkt am Balken, Erweiterungen lesen das offene
+               Wachen-Sheet. */
 
             let stationForBar = null;
 
@@ -1381,6 +1506,8 @@
                     name: DISPATCH_STATION_NAME,
                     supportId: ''
                 };
+            } else if (info.kind === 'station') {
+                stationForBar = info.station;
             } else {
                 if (station === null) {
                     station = findStationContext();
@@ -2165,7 +2292,7 @@
         } else {
             setTextIfChanged(
                 subtitle,
-                'Alarm X vor Fertigstellung der Erweiterung oder der Leitstelle.'
+                'Alarm X vor Fertigstellung einer Erweiterung, eines Wachenausbaus oder der Leitstelle.'
             );
         }
 
@@ -2177,11 +2304,11 @@
                     <p>Noch kein Alarm gesetzt.</p>
 
                     <p class="afilia-bta-empty-hint">
-                        Öffne im Spiel eine Wache, wechsle auf
-                        „Erweiterungen" und klicke neben einer laufenden
-                        Erweiterung auf „Alarm". Bei einem laufenden
-                        Ausbau der Leitstelle steht dieselbe Schaltfläche
-                        direkt neben dem Countdown.
+                        Öffne im Spiel eine Wache und klicke bei einem
+                        laufenden Ausbau der Wache oder einer Erweiterung
+                        auf „Alarm". Bei einem laufenden Ausbau der
+                        Leitstelle steht dieselbe Schaltfläche direkt
+                        neben dem Countdown.
                     </p>
                 </div>
             `;
@@ -2512,6 +2639,22 @@
             .${CLASSES.button}.${CLASSES.dispatch}.${CLASSES.active} {
                 border-color: #dc2626;
                 background: #dc2626;
+                color: #ffffff;
+            }
+
+            .${CLASSES.button}.${CLASSES.station} {
+                border-color: rgba(190, 18, 60, 0.45);
+                color: #be123c;
+            }
+
+            .${CLASSES.button}.${CLASSES.station}:hover {
+                border-color: #be123c;
+                background: #ffffff;
+            }
+
+            .${CLASSES.button}.${CLASSES.station}.${CLASSES.active} {
+                border-color: #be123c;
+                background: #be123c;
                 color: #ffffff;
             }
 
@@ -2995,8 +3138,8 @@
     }
 
     /* Diagnosehilfe fuer die Beta-Phase. In der Konsole
-       aufrufbar, solange eine Erweiterung oder die Leitstelle
-       ausgebaut wird. */
+       aufrufbar, solange eine Wache, eine Erweiterung oder die
+       Leitstelle ausgebaut wird. */
 
     function probe() {
         const extensionStation = findStationContext();
@@ -3010,7 +3153,9 @@
 
             const station = info.kind === 'dispatch'
                 ? { name: DISPATCH_STATION_NAME, supportId: '' }
-                : extensionStation;
+                : info.kind === 'station'
+                    ? info.station
+                    : extensionStation;
 
             return {
                 kind,
@@ -3029,7 +3174,8 @@
 
         if (rows.length === 0) {
             console.warn(
-                '[Afilia Toolbox] Kein Baubalken gefunden. Erwartet wird der Text "%s" im geoeffneten Wachenfenster (Tab „Erweiterungen") oder "%s" im Leitstellen-Fenster.',
+                '[Afilia Toolbox] Kein Baubalken gefunden. Erwartet wird "%s" im Wachenfenster (Tab „Wache"), "%s" im Wachenfenster (Tab „Erweiterungen") oder "%s" im Leitstellen-Fenster.',
+                SELECTORS.stationLabel,
                 SELECTORS.buildtimeLabel,
                 SELECTORS.dispatchLabel
             );
@@ -3047,8 +3193,8 @@
         id: 'buildtimeAlarm',
         name: 'Bauzeit-Alarm',
         description:
-            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung oder des Leitstellen-Ausbaus. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Erweiterung und verbleibende Bauzeit. Nach dem Leitstellen-Ausbau erinnert ein Hinweis an den Einsatzradius.',
-        version: '1.2.1',
+            'Setzt einen Alarm für die Restzeit einer Wachenerweiterung, eines Wachenausbaus (Level-Up) oder des Leitstellen-Ausbaus. Im Baubalken erscheint eine Schaltfläche, die Übersicht zeigt Wache, Ausbau und verbleibende Bauzeit. Nach dem Leitstellen-Ausbau erinnert ein Hinweis an den Einsatzradius.',
+        version: '1.3.0',
         beta: false,
         defaultEnabled: false,
         init,
